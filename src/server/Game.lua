@@ -85,6 +85,29 @@ function Game.startGame()
 	local bossPlayer = playersWaiting[userIds[math.random(#userIds)]]
 	bossPlayer.Team = bossTeam
 
+	-- Enlarge the boss and add additional health
+	bossPlayer.Character.Humanoid.MaxHealth = 1000
+	bossPlayer.Character.Humanoid.Health = 1000
+
+	-- Scale the boss character to 5 times its original size
+	local scaleFactor = 5
+	local character = bossPlayer.Character
+	character:WaitForChild("Humanoid")
+	for _, part in pairs(character:GetChildren()) do
+		if part:IsA("MeshPart") or part:IsA("Part") then
+			part.Size = part.Size * scaleFactor
+			local centerOffset = part.Position - character.PrimaryPart.Position
+			centerOffset = centerOffset * scaleFactor
+			part.Position = character.PrimaryPart.Position + centerOffset
+		end
+	end
+
+	-- Adjust Humanoid scale factors for the boss character
+	character.Humanoid.BodyWidthScale.Value = scaleFactor
+	character.Humanoid.BodyHeightScale.Value = scaleFactor
+	character.Humanoid.BodyDepthScale.Value = scaleFactor
+	character.Humanoid.HeadScale.Value = scaleFactor
+
 	-- Clear players waiting queue
 	for userId in pairs(playersWaiting) do
 		playersWaiting[userId] = nil
