@@ -1,9 +1,6 @@
 local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local shootEvent = ReplicatedStorage:WaitForChild("ShootEvent")
-local player = game.Players.LocalPlayer
-
-player.CameraMode = Enum.CameraMode.LockFirstPerson
 
 local Shoot = {}
 
