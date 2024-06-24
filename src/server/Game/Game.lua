@@ -1,10 +1,12 @@
 local Teleport = require(game.ServerScriptService.Server.Teleport)
 local Leaderboard = require(game.ServerScriptService.Server.Leaderboard)
 
-local Teams = game:GetService("Teams")
+local TeamAssignment = require(game.ServerScriptService.Server.Game.teams)
+local BossFunctions = require(game.ServerScriptService.Server.Game.boss)
+
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TimerRemoteEvent = ReplicatedStorage:WaitForChild("TimerRemoteEvent")
-local OutComeRemoteEvent = ReplicatedStorage:WaitForChild("OutcomeRemoteEvent")
+-- local OutComeRemoteEvent = ReplicatedStorage:WaitForChild("OutcomeRemoteEvent")
 
 -- Parts
 local WaitingPlatform = game.Workspace.WaitingRoom.WaitingPlatform
@@ -23,26 +25,6 @@ local states = {
 	END = "END",
 }
 
--- create two teams
-local bossPlayer = nil
-local bossTeam = Instance.new("Team")
-bossTeam.TeamColor = BrickColor.new("Bright red")
-bossTeam.AutoAssignable = false
-bossTeam.Name = "Boss"
-bossTeam.Parent = Teams
-
-local otherTeam = Instance.new("Team")
-otherTeam.TeamColor = BrickColor.new("Bright blue")
-otherTeam.AutoAssignable = false
-otherTeam.Name = "Other"
-otherTeam.Parent = Teams
-
-local waitingTeam = Instance.new("Team")
-waitingTeam.TeamColor = BrickColor.new("Grey")
-waitingTeam.AutoAssignable = true
-waitingTeam.Name = "Waiting"
-waitingTeam.Parent = Teams
-
 -- Local properties
 local teleportToArena = Teleport:new(TeleportPlatform, Baseplate)
 local teleportToWait = Teleport:new(Baseplate, TeleportPlatform)
@@ -56,39 +38,6 @@ local debouncedArenaPlayers = {}
 local state = states.END
 
 -- Utils
-function toggleCharacterSize(character, enlarge)
-	local scaleFactor = 5 -- The scale factor for enlarging the character
-	local currentFactor = enlarge and scaleFactor or (1 / scaleFactor) -- Determine the scale factor based on the 'enlarge' parameter
-
-	-- Ensure the character and its parts are fully loaded
-	character:WaitForChild("Humanoid")
-
-	-- Scale each part of the character
-	for _, part in pairs(character:GetChildren()) do
-		if part:IsA("MeshPart") or part:IsA("Part") then
-			part.Size = part.Size * currentFactor
-			local centerOffset = part.Position - character.PrimaryPart.Position
-			centerOffset = centerOffset * currentFactor
-			part.Position = character.PrimaryPart.Position + centerOffset
-		end
-	end
-
-	-- Adjust Humanoid scale factors based on the action
-	local humanoid = character:FindFirstChildOfClass("Humanoid")
-	if humanoid then
-		if enlarge then
-			humanoid.BodyWidthScale.Value = scaleFactor
-			humanoid.BodyHeightScale.Value = scaleFactor
-			humanoid.BodyDepthScale.Value = scaleFactor
-			humanoid.HeadScale.Value = scaleFactor
-		else
-			humanoid.BodyWidthScale.Value = 1
-			humanoid.BodyHeightScale.Value = 1
-			humanoid.BodyDepthScale.Value = 1
-			humanoid.HeadScale.Value = 1
-		end
-	end
-end
 
 -- Define the Game object
 local Game = {}
@@ -117,21 +66,11 @@ function startGame()
 	teleportToArena:teleportPlayers(playersWaiting)
 
 	-- Team assignment logic
-	local userIds = {}
+	TeamAssignment.assignTeams(playersWaiting)
 
-	for userId, player in pairs(playersWaiting) do
-		table.insert(userIds, userId)
-		player.Team = otherTeam
-	end
-
-	bossPlayer = playersWaiting[userIds[math.random(#userIds)]]
-	bossPlayer.Team = bossTeam
-
-	-- Enlarge the boss and add additional health
-	bossPlayer.Character.Humanoid.MaxHealth = 1000
-	bossPlayer.Character.Humanoid.Health = 1000
-
-	toggleCharacterSize(bossPlayer.Character, true)
+	-- Make Boss
+	local bossPlayer = TeamAssignment.getBossPlayer()
+	BossFunctions.makeBoss(bossPlayer)
 
 	-- Clear players waiting queue
 	for userId in pairs(playersWaiting) do
@@ -148,37 +87,8 @@ function startGame()
 end
 
 function endGame()
-	-- Determine outcome and inform clients
-	local redTeamScore = 0
-	local blueTeamScore = 0
-	local outcome = ""
-	for _, player in bossTeam:GetPlayers() do
-		redTeamScore += Leaderboard.getStat(player, "Goals")
-	end
-	for _, player in otherTeam:GetPlayers() do
-		blueTeamScore += Leaderboard.getStat(player, "Goals")
-	end
-	if redTeamScore > blueTeamScore then
-		outcome = "Red Team"
-	elseif blueTeamScore > redTeamScore then
-		outcome = "Blue Team"
-	else
-		outcome = "Draw"
-	end
-
 	-- Debounce players to prevent teleporting back and forth
 	for userId, player in pairs(playersInArena) do
-		local playerOutcome = ""
-		if outcome == player.Team.Name then
-			playerOutcome = "Victory"
-		elseif outcome == "Draw" then
-			playerOutcome = "Draw"
-		else
-			playerOutcome = "Defeat"
-		end
-
-		OutComeRemoteEvent:FireClient(player, playerOutcome)
-		player.Team = waitingTeam
 		if not debouncedArenaPlayers[userId] then
 			debouncedArenaPlayers[userId] = true
 			task.delay(DEBOUNCE, function()
@@ -191,13 +101,14 @@ function endGame()
 	state = states.END
 
 	-- Reset boss player size and health
-	bossPlayer.Character.Humanoid.MaxHealth = 100
-	bossPlayer.Character.Humanoid.Health = 100
-	toggleCharacterSize(bossPlayer.Character, false)
-	bossPlayer = nil
+	local bossPlayer = TeamAssignment.getBossPlayer()
+	BossFunctions.removeBoss(bossPlayer)
 
 	-- Teleport players back to the waiting room
 	teleportToWait:teleportPlayers(playersInArena)
+
+	-- Back to waiting team
+	TeamAssignment.assignWaitingTeams(playersInArena)
 
 	-- Reset player stats
 	local allPlayers = game.Players:GetPlayers()

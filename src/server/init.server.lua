@@ -1,7 +1,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ShootEvent = ReplicatedStorage:WaitForChild("ShootEvent")
 local Leaderboard = require(game.ServerScriptService.Server.Leaderboard)
-local Game = require(game.ServerScriptService.Server.Game) -- Initialize the game
+local Game = require(game.ServerScriptService.Server.Game.Game) -- Initialize the game
 local Players = game:GetService("Players")
 
 local speed = 5
