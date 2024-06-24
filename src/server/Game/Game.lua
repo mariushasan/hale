@@ -1,5 +1,4 @@
 local Teleport = require(game.ServerScriptService.Server.Teleport)
-local Leaderboard = require(game.ServerScriptService.Server.Leaderboard)
 
 local TeamAssignment = require(game.ServerScriptService.Server.Game.teams)
 local BossFunctions = require(game.ServerScriptService.Server.Game.boss)
@@ -30,14 +29,15 @@ local teleportToArena = Teleport:new(TeleportPlatform, Baseplate)
 local teleportToWait = Teleport:new(Baseplate, TeleportPlatform)
 
 local playersWaiting = {}
+local playersSpecating = {}
 local playersInArena = {}
 
 local deboucedWaitingPlayers = {}
 local debouncedArenaPlayers = {}
 
-local state = states.END
+local gametime = nil
 
--- Utils
+local state = states.END
 
 -- Define the Game object
 local Game = {}
@@ -81,12 +81,12 @@ function startGame()
 	TimerRemoteEvent:FireAllClients(GAME_TIME)
 
 	-- End the game after done
-	task.delay(GAME_TIME, function()
-		endGame()
+	gametime = task.delay(GAME_TIME, function()
+		endGame(true)
 	end)
 end
 
-function endGame()
+function endGame(bossWon)
 	-- Debounce players to prevent teleporting back and forth
 	for userId, player in pairs(playersInArena) do
 		if not debouncedArenaPlayers[userId] then
@@ -109,17 +109,15 @@ function endGame()
 
 	-- Back to waiting team
 	TeamAssignment.assignWaitingTeams(playersInArena)
-
-	-- Reset player stats
-	local allPlayers = game.Players:GetPlayers()
-	for _, player in pairs(allPlayers) do
-		Leaderboard.setStat(player, "Goals", 0)
-	end
+	TeamAssignment.assignWaitingTeams(playersSpecating)
 
 	-- Clear players in arena queue
 	for userId, _ in pairs(playersInArena) do
 		playersInArena[userId] = nil
 	end
+
+	-- Winning logic here
+	print(bossWon and "Boss won" or "Boss lost")
 end
 
 -- Event listeners
@@ -157,6 +155,24 @@ WaitingPlatform.Touched:Connect(function(hit)
 	if player and playersWaiting[player.UserId] then
 		playersWaiting[player.UserId] = nil
 	end
+end)
+
+game.Players.PlayerAdded:Connect(function(player)
+	player.CharacterAdded:Connect(function(character)
+		character:WaitForChild("Humanoid")
+		character.Humanoid.Died:Connect(function()
+			if playersInArena[player.UserId] then
+				playersInArena[player.UserId] = nil
+				playersSpecating[player.UserId] = player
+
+				if player == TeamAssignment.getBossPlayer() or #playersInArena == 1 then
+					gametime:Cancel()
+					TimerRemoteEvent:FireAllClients(0)
+					endGame(#playersInArena == 1)
+				end
+			end
+		end)
+	end)
 end)
 
 return Game
