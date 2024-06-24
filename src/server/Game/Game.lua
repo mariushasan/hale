@@ -1,5 +1,4 @@
 local Teleport = require(game.ServerScriptService.Server.Teleport)
-local Leaderboard = require(game.ServerScriptService.Server.Leaderboard)
 
 local TeamAssignment = require(game.ServerScriptService.Server.Game.teams)
 local BossFunctions = require(game.ServerScriptService.Server.Game.boss)
@@ -35,6 +34,8 @@ local playersInArena = {}
 
 local deboucedWaitingPlayers = {}
 local debouncedArenaPlayers = {}
+
+local gametime = nil
 
 local state = states.END
 
@@ -80,12 +81,12 @@ function startGame()
 	TimerRemoteEvent:FireAllClients(GAME_TIME)
 
 	-- End the game after done
-	task.delay(GAME_TIME, function()
-		endGame()
+	gametime = task.delay(GAME_TIME, function()
+		endGame(true)
 	end)
 end
 
-function endGame()
+function endGame(bossWon)
 	-- Debounce players to prevent teleporting back and forth
 	for userId, player in pairs(playersInArena) do
 		if not debouncedArenaPlayers[userId] then
@@ -110,16 +111,13 @@ function endGame()
 	TeamAssignment.assignWaitingTeams(playersInArena)
 	TeamAssignment.assignWaitingTeams(playersSpecating)
 
-	-- Reset player stats
-	local allPlayers = game.Players:GetPlayers()
-	for _, player in pairs(allPlayers) do
-		Leaderboard.setStat(player, "Goals", 0)
-	end
-
 	-- Clear players in arena queue
 	for userId, _ in pairs(playersInArena) do
 		playersInArena[userId] = nil
 	end
+
+	-- Winning logic here
+	print(bossWon and "Boss won" or "Boss lost")
 end
 
 -- Event listeners
@@ -166,6 +164,12 @@ game.Players.PlayerAdded:Connect(function(player)
 			if playersInArena[player.UserId] then
 				playersInArena[player.UserId] = nil
 				playersSpecating[player.UserId] = player
+
+				if player == TeamAssignment.getBossPlayer() or #playersInArena == 1 then
+					gametime:Cancel()
+					TimerRemoteEvent:FireAllClients(0)
+					endGame(#playersInArena == 1)
+				end
 			end
 		end)
 	end)
