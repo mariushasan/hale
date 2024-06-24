@@ -1,7 +1,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ShootEvent = ReplicatedStorage:WaitForChild("ShootEvent")
 local Leaderboard = require(game.ServerScriptService.Server.Leaderboard)
-require(game.ServerScriptService.Server.Game) -- Initialize the game
+local Game = require(game.ServerScriptService.Server.Game.Game) -- Initialize the game
 local Players = game:GetService("Players")
 
 local speed = 5
@@ -11,32 +11,32 @@ local damage = 5
 
 -- Function to set player walk speed
 local function setPlayerSpeed(player)
-    local speed = 70 -- Adjust this value to change the run speed
+	local speed = 70 -- Adjust this value to change the run speed
 
-    -- Wait for the character to load
-    local character = player.Character or player.CharacterAdded:Wait()
-    local humanoid = character:FindFirstChildOfClass("Humanoid")
-    
-    if humanoid then
-        humanoid.WalkSpeed = speed
-    end
+	-- Wait for the character to load
+	local character = player.Character or player.CharacterAdded:Wait()
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+
+	if humanoid then
+		humanoid.WalkSpeed = speed
+	end
 end
 
 local function setPlayerJumpHeight(player)
-    local jumpHeight = 50 -- Adjust this value to change the jump height
+	local jumpHeight = 50 -- Adjust this value to change the jump height
 
-    -- Wait for the character to load
-    local character = player.Character or player.CharacterAdded:Wait()
-    local humanoid = character:FindFirstChildOfClass("Humanoid")
-    
-    if humanoid then
-        humanoid.UseJumpPower = true
-        humanoid.JumpPower = jumpHeight
-    end
+	-- Wait for the character to load
+	local character = player.Character or player.CharacterAdded:Wait()
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+
+	if humanoid then
+		humanoid.UseJumpPower = true
+		humanoid.JumpPower = jumpHeight
+	end
 end
 
 local function setPlayerData(player)
-    Leaderboard.setStat(player, "Goals", 0)
+	Leaderboard.setStat(player, "Goals", 0)
 end
 
 Players.PlayerAdded:Connect(setPlayerSpeed)
@@ -44,6 +44,10 @@ Players.PlayerAdded:Connect(setPlayerJumpHeight)
 Players.PlayerAdded:Connect(setPlayerData)
 
 local function handleShoot(player, startPosition, direction)
+	-- Check if the player is in the arena
+	if not Game.isPlayerInArena(player) then
+		return
+	end
 	-- Initializing
 	local ray, object, position
 
@@ -60,10 +64,10 @@ local function handleShoot(player, startPosition, direction)
 	-- Ray casting function
 	local function RayCast()
 		ray = Ray.new(bullet.CFrame.p, bullet.CFrame.LookVector * speed)
-		object, position = game.Workspace:FindPartOnRayWithIgnoreList(ray, {player.Character}, false, true)
+		object, position = game.Workspace:FindPartOnRayWithIgnoreList(ray, { player.Character }, false, true)
 
-		local dropDamageModifier = (position - startPosition).Magnitude/dropDistance
-		local _damage = damage/dropDamageModifier
+		local dropDamageModifier = (position - startPosition).Magnitude / dropDistance
+		local _damage = damage / dropDamageModifier
 
 		if _damage > damage then
 			_damage = damage
@@ -106,8 +110,7 @@ local function handleShoot(player, startPosition, direction)
 			wait()
 		end
 	end)
-    createBulletTrajectory() -- Running the coroutine thread
+	createBulletTrajectory() -- Running the coroutine thread
 end
-
 
 ShootEvent.OnServerEvent:Connect(handleShoot)
