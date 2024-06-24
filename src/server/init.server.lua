@@ -1,7 +1,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ShootEvent = ReplicatedStorage:WaitForChild("ShootEvent")
 local Leaderboard = require(game.ServerScriptService.Server.Leaderboard)
-require(game.ServerScriptService.Server.Game) -- Initialize the game
+local Game = require(game.ServerScriptService.Server.Game) -- Initialize the game
 local Players = game:GetService("Players")
 
 local speed = 5
@@ -44,6 +44,10 @@ Players.PlayerAdded:Connect(setPlayerJumpHeight)
 Players.PlayerAdded:Connect(setPlayerData)
 
 local function handleShoot(player, startPosition, direction)
+	-- Check if the player is in the arena
+	if not Game.isPlayerInArena(player) then
+		return
+	end
 	-- Initializing
 	local ray, object, position
 

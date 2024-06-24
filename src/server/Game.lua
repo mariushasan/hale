@@ -93,7 +93,13 @@ end
 -- Define the Game object
 local Game = {}
 
-function Game.startGame()
+-- Exported functions
+function Game.isPlayerInArena(player)
+	return playersInArena[player.UserId] ~= nil
+end
+
+-- Internal functions
+function startGame()
 	-- Debounce players to prevent teleporting back and forth
 	for userId in pairs(playersWaiting) do
 		if not deboucedWaitingPlayers[userId] then
@@ -137,11 +143,11 @@ function Game.startGame()
 
 	-- End the game after done
 	task.delay(GAME_TIME, function()
-		Game.endGame()
+		endGame()
 	end)
 end
 
-function Game.endGame()
+function endGame()
 	-- Determine outcome and inform clients
 	local redTeamScore = 0
 	local blueTeamScore = 0
@@ -221,7 +227,7 @@ TeleportPlatform.Touched:Connect(function(hit)
 		if #playerAmount >= PLAYER_THRESHOLD then
 			state = states.WAITING
 			task.delay(WAITING_TIME, function()
-				Game.startGame()
+				startGame()
 			end)
 			TimerRemoteEvent:FireAllClients(WAITING_TIME)
 		end
