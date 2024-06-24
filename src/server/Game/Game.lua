@@ -166,7 +166,6 @@ game.Players.PlayerAdded:Connect(function(player)
 			if playersInArena[player.UserId] then
 				playersInArena[player.UserId] = nil
 				playersSpecating[player.UserId] = player
-				teleportToWait:teleportPlayer(player)
 			end
 		end)
 	end)
