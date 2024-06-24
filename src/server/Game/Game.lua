@@ -19,16 +19,10 @@ local GAME_TIME = 3 * MINUTE
 local WAITING_TIME = 15
 local DEBOUNCE = 3
 local PLAYER_THRESHOLD = 1
-local gameStates = {
+local states = {
 	WAITING = "WAITING",
 	PLAYING = "PLAYING",
 	END = "END",
-}
-
-local playerStates = {
-	WAITING = "WAITING",
-	PLAYING = "PLAYING",
-	SPECTATING = "SPECTATING",
 }
 
 -- Local properties
@@ -42,7 +36,7 @@ local playersInArena = {}
 local deboucedWaitingPlayers = {}
 local debouncedArenaPlayers = {}
 
-local state = gameStates.END
+local state = states.END
 
 -- Define the Game object
 local Game = {}
@@ -65,7 +59,7 @@ function startGame()
 	end
 
 	-- Set the game state to playing
-	state = gameStates.PLAYING
+	state = states.PLAYING
 
 	-- Teleport players to the arena
 	teleportToArena:teleportPlayers(playersWaiting)
@@ -103,7 +97,7 @@ function endGame()
 	end
 
 	-- Set the game state to end
-	state = gameStates.END
+	state = states.END
 
 	-- Reset boss player size and health
 	local bossPlayer = TeamAssignment.getBossPlayer()
@@ -135,14 +129,14 @@ TeleportPlatform.Touched:Connect(function(hit)
 		playersWaiting[player.UserId] = player
 	end
 
-	if state == gameStates.END then
+	if state == states.END then
 		local playerAmount = {}
 		for k in pairs(playersWaiting) do
 			table.insert(playerAmount, k)
 		end
 
 		if #playerAmount >= PLAYER_THRESHOLD then
-			state = gameStates.WAITING
+			state = states.WAITING
 			task.delay(WAITING_TIME, function()
 				startGame()
 			end)
