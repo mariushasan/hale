@@ -19,10 +19,16 @@ local GAME_TIME = 3 * MINUTE
 local WAITING_TIME = 15
 local DEBOUNCE = 3
 local PLAYER_THRESHOLD = 1
-local states = {
+local gameStates = {
 	WAITING = "WAITING",
 	PLAYING = "PLAYING",
 	END = "END",
+}
+
+local playerStates = {
+	WAITING = "WAITING",
+	PLAYING = "PLAYING",
+	SPECTATING = "SPECTATING",
 }
 
 -- Local properties
@@ -30,14 +36,13 @@ local teleportToArena = Teleport:new(TeleportPlatform, Baseplate)
 local teleportToWait = Teleport:new(Baseplate, TeleportPlatform)
 
 local playersWaiting = {}
+local playersSpecating = {}
 local playersInArena = {}
 
 local deboucedWaitingPlayers = {}
 local debouncedArenaPlayers = {}
 
-local state = states.END
-
--- Utils
+local state = gameStates.END
 
 -- Define the Game object
 local Game = {}
@@ -60,7 +65,7 @@ function startGame()
 	end
 
 	-- Set the game state to playing
-	state = states.PLAYING
+	state = gameStates.PLAYING
 
 	-- Teleport players to the arena
 	teleportToArena:teleportPlayers(playersWaiting)
@@ -98,7 +103,7 @@ function endGame()
 	end
 
 	-- Set the game state to end
-	state = states.END
+	state = gameStates.END
 
 	-- Reset boss player size and health
 	local bossPlayer = TeamAssignment.getBossPlayer()
@@ -109,6 +114,7 @@ function endGame()
 
 	-- Back to waiting team
 	TeamAssignment.assignWaitingTeams(playersInArena)
+	TeamAssignment.assignWaitingTeams(playersSpecating)
 
 	-- Reset player stats
 	local allPlayers = game.Players:GetPlayers()
@@ -129,14 +135,14 @@ TeleportPlatform.Touched:Connect(function(hit)
 		playersWaiting[player.UserId] = player
 	end
 
-	if state == states.END then
+	if state == gameStates.END then
 		local playerAmount = {}
 		for k in pairs(playersWaiting) do
 			table.insert(playerAmount, k)
 		end
 
 		if #playerAmount >= PLAYER_THRESHOLD then
-			state = states.WAITING
+			state = gameStates.WAITING
 			task.delay(WAITING_TIME, function()
 				startGame()
 			end)
@@ -157,6 +163,19 @@ WaitingPlatform.Touched:Connect(function(hit)
 	if player and playersWaiting[player.UserId] then
 		playersWaiting[player.UserId] = nil
 	end
+end)
+
+game.Players.PlayerAdded:Connect(function(player)
+	player.CharacterAdded:Connect(function(character)
+		character:WaitForChild("Humanoid")
+		character.Humanoid.Died:Connect(function()
+			if playersInArena[player.UserId] then
+				playersInArena[player.UserId] = nil
+				playersSpecating[player.UserId] = player
+				teleportToWait:teleportPlayer(player)
+			end
+		end)
+	end)
 end)
 
 return Game
