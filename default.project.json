@@ -2,27 +2,33 @@
   "name": "hale",
   "tree": {
     "$className": "DataModel",
-
     "ReplicatedStorage": {
-      "Common": {
-        "$path": "src/shared"
+      "$path": "src/ReplicatedStorage",
+      "TimerRemoteEvent": {
+        "$className": "RemoteEvent"
+      },
+      "ShootEvent": {
+        "$className": "RemoteEvent"
+      },
+      "OutcomeRemoteEvent": {
+        "$className": "RemoteEvent"
+      },
+      "WeaponSelectionEvent": {
+        "$className": "RemoteEvent"
       }
     },
-
     "ServerScriptService": {
       "Server": {
-        "$path": "src/server"
+        "$path": "src/ServerScriptService/Server"
       }
     },
-
     "StarterPlayer": {
       "StarterPlayerScripts": {
         "Client": {
-          "$path": "src/client"
+          "$path": "src/StarterPlayer/StarterPlayerScripts/Client"
         }
       }
     },
-
     "Workspace": {
       "$properties": {
         "FilteringEnabled": true

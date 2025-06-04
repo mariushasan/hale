@@ -1,3 +1,5 @@
+local Boss = {}
+
 -- Internal functions
 function toggleCharacterSize(character, enlarge)
 	local scaleFactor = 5 -- The scale factor for enlarging the character
@@ -33,19 +35,16 @@ function toggleCharacterSize(character, enlarge)
 	end
 end
 
--- Exported functions
-local BossFunctions = {}
-
-function BossFunctions.makeBoss(player)
+function Boss.makeBoss(player)
 	player.Character.Humanoid.MaxHealth = 1000
 	player.Character.Humanoid.Health = 1000
 	toggleCharacterSize(player.Character, true)
 end
 
-function BossFunctions.removeBoss(player)
+function Boss.removeBoss(player)
 	player.Character.Humanoid.MaxHealth = 100
 	player.Character.Humanoid.Health = 100
 	toggleCharacterSize(player.Character, false)
 end
 
-return BossFunctions
+return Boss

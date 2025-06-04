@@ -1,8 +1,8 @@
-local Teleport = require(game.ServerScriptService.Server.Teleport)
-local Leaderboard = require(game.ServerScriptService.Server.Leaderboard)
+local Teleport = require(game.ServerScriptService.Server.shared.Teleport)
+local Leaderboard = require(game.ServerScriptService.Server.shared.Leaderboard)
 
-local TeamAssignment = require(game.ServerScriptService.Server.Game.teams)
-local BossFunctions = require(game.ServerScriptService.Server.Game.boss)
+local Teams = require(game.ServerScriptService.Server.features.game.Teams)
+local BossFunctions = require(game.ServerScriptService.Server.features.game.Boss)
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TimerRemoteEvent = ReplicatedStorage:WaitForChild("TimerRemoteEvent")
@@ -66,10 +66,10 @@ function startGame()
 	teleportToArena:teleportPlayers(playersWaiting)
 
 	-- Team assignment logic
-	TeamAssignment.assignTeams(playersWaiting)
+	Teams.assignTeams(playersWaiting)
 
 	-- Make Boss
-	local bossPlayer = TeamAssignment.getBossPlayer()
+	local bossPlayer = Teams.getBossPlayer()
 	BossFunctions.makeBoss(bossPlayer)
 
 	-- Clear players waiting queue
@@ -123,40 +123,43 @@ function endGame()
 end
 
 -- Event listeners
-TeleportPlatform.Touched:Connect(function(hit)
-	local player = game.Players:GetPlayerFromCharacter(hit.Parent)
-	if player and not playersWaiting[player.UserId] and not deboucedWaitingPlayers[player.UserId] then
-		playersWaiting[player.UserId] = player
-	end
-
-	if state == states.END then
-		local playerAmount = {}
-		for k in pairs(playersWaiting) do
-			table.insert(playerAmount, k)
+function Game.initialize()
+	Teams.initialize()
+	TeleportPlatform.Touched:Connect(function(hit)
+		local player = game.Players:GetPlayerFromCharacter(hit.Parent)
+		if player and not playersWaiting[player.UserId] and not deboucedWaitingPlayers[player.UserId] then
+			playersWaiting[player.UserId] = player
 		end
 
-		if #playerAmount >= PLAYER_THRESHOLD then
-			state = states.WAITING
-			task.delay(WAITING_TIME, function()
-				startGame()
-			end)
-			TimerRemoteEvent:FireAllClients(WAITING_TIME)
+		if state == states.END then
+			local playerAmount = {}
+			for k in pairs(playersWaiting) do
+				table.insert(playerAmount, k)
+			end
+
+			if #playerAmount >= PLAYER_THRESHOLD then
+				state = states.WAITING
+				task.delay(WAITING_TIME, function()
+					startGame()
+				end)
+				TimerRemoteEvent:FireAllClients(WAITING_TIME)
+			end
 		end
-	end
-end)
+	end)
 
-Baseplate.Touched:Connect(function(hit)
-	local player = game.Players:GetPlayerFromCharacter(hit.Parent)
-	if player and not playersInArena[player.UserId] and not debouncedArenaPlayers[player.UserId] then
-		playersInArena[player.UserId] = player
-	end
-end)
+	Baseplate.Touched:Connect(function(hit)
+		local player = game.Players:GetPlayerFromCharacter(hit.Parent)
+		if player and not playersInArena[player.UserId] and not debouncedArenaPlayers[player.UserId] then
+			playersInArena[player.UserId] = player
+		end
+	end)
 
-WaitingPlatform.Touched:Connect(function(hit)
-	local player = game.Players:GetPlayerFromCharacter(hit.Parent)
-	if player and playersWaiting[player.UserId] then
-		playersWaiting[player.UserId] = nil
-	end
-end)
+	WaitingPlatform.Touched:Connect(function(hit)
+		local player = game.Players:GetPlayerFromCharacter(hit.Parent)
+		if player and playersWaiting[player.UserId] then
+			playersWaiting[player.UserId] = nil
+		end
+	end)
+end
 
 return Game
