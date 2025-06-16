@@ -327,30 +327,34 @@ function Weapons.fire(bulletId, weaponType, startPosition, direction)
 		-- Check if this is a local firing (bullet ID starts with local player's name)
 		local player = Players.LocalPlayer
 		if bulletId and bulletId:find("^" .. player.Name .. "_") then
-			-- Get reference part position for lag compensation
-			local referencePart = workspace:FindFirstChild("LagCompensationReference")
-			local referencePartPosition = Vector3.new(0, 0, 0) -- Default fallback
+			-- Perform client-side raycast to detect what we hit
+			local camera = workspace.CurrentCamera
+			local raycastParams = RaycastParams.new()
+			raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+			raycastParams.FilterDescendantsInstances = {player.Character}
 			
-			if referencePart then
-				referencePartPosition = referencePart.Position
-			else
-				warn("Lag compensation reference part not found!")
-			end
+			-- Raycast in the direction we're shooting
+			local raycastDistance = 1000 -- Max shooting distance
+			local raycastResult = workspace:Raycast(startPosition, direction * raycastDistance, raycastParams)
 			
-			-- Log client-side dummy positions at fire time for comparison with server lag compensation
-			print("CLIENT DUMMY POSITIONS AT FIRE TIME:")
-			print("Reference part position:", referencePartPosition)
+			local hitPart = nil
+			local hitPosition = nil
 			
-			-- Find all dummies in workspace and log their positions
-			for _, child in pairs(workspace:GetChildren()) do
-				if child:IsA("Model") and child.Name:find("TestDummy") and child.PrimaryPart then
-					local dummyPosition = child.PrimaryPart.Position
-					print("CLIENT - " .. child.Name .. " position:", dummyPosition)
+			if raycastResult then
+				hitPart = raycastResult.Instance
+				hitPosition = raycastResult.Position
+				
+				-- Log what we hit on client
+				print("CLIENT HIT:", hitPart.Name, "at position:", hitPosition)
+				if hitPart.Parent and hitPart.Parent:FindFirstChildOfClass("Humanoid") then
+					print("CLIENT HIT CHARACTER:", hitPart.Parent.Name)
 				end
+			else
+				print("CLIENT: No hit detected")
 			end
 			
-			-- Send shoot event to server with reference part position instead of timestamp
-			shootEvent:FireServer(bulletId, startPosition, referencePartPosition, direction)
+			-- Send shoot event to server with hit information instead of reference position
+			shootEvent:FireServer(bulletId, startPosition, {hitPart = hitPart, hitPosition = hitPosition}, direction)
 			
 			-- Then play weapon effects (animations, sounds, etc.)
 			weapon.fire(startPosition, direction)
