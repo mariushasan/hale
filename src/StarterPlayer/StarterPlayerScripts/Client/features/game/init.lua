@@ -5,7 +5,7 @@ local GameUI = require(game.StarterPlayer.StarterPlayerScripts.Client.features.g
 
 local Game = {}
 
-function Game.initialize()
+function Game.init()
     TimerRemoteEvent.OnClientEvent:Connect(function(timeSeconds)
         GameUI.setTimer(timeSeconds)
     end)

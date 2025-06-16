@@ -15,6 +15,15 @@
       },
       "WeaponSelectionEvent": {
         "$className": "RemoteEvent"
+      },
+      "DebugLogEvent": {
+        "$className": "RemoteEvent"
+      },
+      "TimeSyncEvent": {
+        "$className": "RemoteEvent"
+      },
+      "BossAttackEvent": {
+        "$className": "RemoteEvent"
       }
     },
     "ServerScriptService": {

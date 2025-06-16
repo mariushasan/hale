@@ -12,7 +12,7 @@ local function onFire()
 end
 
 
-function Shoot.initialize()
+function Shoot.init()
     if UserInputService.TouchEnabled and not UserInputService.MouseEnabled then
         UserInputService.TouchTap:Connect(function(touchPositions, processedByUI)
             if not processedByUI then

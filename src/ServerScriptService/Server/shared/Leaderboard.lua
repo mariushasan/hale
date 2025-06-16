@@ -47,4 +47,13 @@ function Leaderboard.getStat(player, statName)
   return stat.Value
 end
 
+function Leaderboard.addToStat(player, statName, value)
+  local currentValue = Leaderboard.getStat(player, statName)
+  if not currentValue then
+    Leaderboard.setStat(player, statName, value)
+  end
+
+  Leaderboard.setStat(player, statName, currentValue + value)
+end
+
 return Leaderboard

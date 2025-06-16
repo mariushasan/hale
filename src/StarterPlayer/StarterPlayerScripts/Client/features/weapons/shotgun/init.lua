@@ -105,27 +105,33 @@ end
 -- Create a bullet with trail effect
 local function createBullet(startPosition, direction)
     local bullet = BulletTemplate:Clone()
-    bullet.Position = startPosition
-    bullet.Parent = workspace
-        
-    -- Create trail effect
-    local trail = Instance.new("Trail")
-    trail.Color = ColorSequence.new(ShotgunConstants.TRAIL_COLOR)
-    trail.Transparency = NumberSequence.new(ShotgunConstants.TRAIL_TRANSPARENCY)
-    trail.Lifetime = ShotgunConstants.TRAIL_LIFETIME
-    trail.Parent = bullet
     
-    -- Add attachment points for trail
+    -- Simple positioning first - no orientation
+    bullet.CFrame = CFrame.new(startPosition, startPosition + direction)
+    bullet.Parent = workspace
+            
+    -- Add attachment points for trail with simple positions
     local attachment1 = Instance.new("Attachment")
-    attachment1.Position = Vector3.new(0, 0, -0.5)
+    attachment1.Name = "TrailAttachment1"
+    attachment1.Position = Vector3.new(0.02, 0, 0)  -- Center of bullet
     attachment1.Parent = bullet
     
     local attachment2 = Instance.new("Attachment")
-    attachment2.Position = Vector3.new(0, 0, 0.5)
+    attachment2.Name = "TrailAttachment2"
+    attachment2.Position = Vector3.new(-0.02, 0, 0)
     attachment2.Parent = bullet
     
+    -- Create trail effect with basic settings
+    local trail = Instance.new("Trail")
+    trail.Name = "BulletTrail"
+    trail.Color = ColorSequence.new(Color3.fromRGB(255, 255, 0)) -- Bright yellow for visibility
+    trail.Transparency = NumberSequence.new(0) -- Fully opaque
+    trail.Lifetime = 0.2 -- Longer lifetime
+    trail.MinLength = 0
+    trail.Enabled = true
     trail.Attachment0 = attachment1
     trail.Attachment1 = attachment2
+    trail.Parent = bullet
     
     return bullet
 end
@@ -148,56 +154,76 @@ local function createSpreadPattern(direction, count)
     return directions
 end
 
-function Shotgun.animateBullet()
-    local camera = workspace.CurrentCamera
-    if not camera then return function() return false end end
+function Shotgun.animateBullet(providedStartPosition, providedDirection)
+	-- Use provided parameters or fall back to camera
+	local camera = workspace.CurrentCamera
+	local startPosition = providedStartPosition or (camera.CFrame.Position + camera.CFrame.LookVector * 2)
+	local direction = providedDirection or camera.CFrame.LookVector
+	
+	-- Get camera's right and up vectors for proper 3D spread
+	local rightVector = camera.CFrame.RightVector
+	local upVector = camera.CFrame.UpVector
+	local forwardVector = direction.Unit
+	
+	local bullets = {}
+	
+	-- Create spread pattern using camera orientation
+	local spreadDirections = {
+		forwardVector,                                           -- Center
+		forwardVector + rightVector * 0.1,                      -- Right
+		forwardVector - rightVector * 0.1,                      -- Left  
+		forwardVector + upVector * 0.1,                         -- Up
+		forwardVector - upVector * 0.1,                         -- Down
+		forwardVector + rightVector * 0.07 + upVector * 0.07,   -- Top-right
+		forwardVector - rightVector * 0.07 + upVector * 0.07,   -- Top-left
+		forwardVector + rightVector * 0.07 - upVector * 0.07,   -- Bottom-right
+        forwardVector - rightVector * 0.07 - upVector * 0.07,   -- Bottom-left
+	}
+	
+	-- Create bullets for each direction
+	for i, spreadDirection in ipairs(spreadDirections) do
+		local bullet = createBullet(startPosition, spreadDirection)
+		
+		-- Store the initial CFrame rotation to avoid precision issues
+		local initialCFrame = CFrame.new(startPosition, startPosition + spreadDirection)
 
-    -- Get shooting direction and start position
-    local direction = camera.CFrame.LookVector
-    local startPosition = camera.CFrame.Position + direction * 2
-    local startTime = tick()
-    
-    -- Create bullets and get their update functions
-    local spreadDirections = createSpreadPattern(direction, ShotgunConstants.PELLETS_PER_SHOT)
-    local bulletUpdates = {}
-    
-    for _, spreadDir in ipairs(spreadDirections) do
-        local bullet = createBullet(startPosition, spreadDir)
-        
-        -- Create update function for this bullet
-        local function updateBullet(deltaTime)
-            -- Move bullet based on speed and deltaTime
-            local moveDistance = ShotgunConstants.BULLET_SPEED * deltaTime
-            local newPosition = bullet.Position + (spreadDir * moveDistance)
-            bullet.Position = newPosition
-            
-            -- Check if bullet should be removed
-            local distanceTraveled = (newPosition - startPosition).Magnitude
-            if distanceTraveled > ShotgunConstants.MAX_BULLET_DISTANCE then
-                bullet:Destroy()
-                return true -- Signal to remove from active bullets
-            end
-            
-            return false -- Keep bullet active
-        end
-        
-        -- Do initial update immediately for this bullet
-        updateBullet(0.016)
-        
-        table.insert(bulletUpdates, updateBullet)
-    end
-    
-    -- Return a function that updates all bullets
-    return function(deltaTime)
-        local allRemoved = true
-        for _, updateFn in ipairs(bulletUpdates) do
-            local removed = updateFn(deltaTime)
-            if not removed then
-                allRemoved = false
-            end
-        end
-        return allRemoved -- Return true if all bullets should be removed
-    end
+		table.insert(bullets, {
+			part = bullet,
+			direction = spreadDirection.Unit,
+			startTime = tick(),
+			startPosition = startPosition,
+		})
+	end
+	
+	-- Return update function for all bullets
+	return function(deltaTime)
+		local currentTime = tick()
+		
+		for i = #bullets, 1, -1 do
+			local bulletData = bullets[i]
+			
+			-- Check if bullet still exists
+			if bulletData.part and bulletData.part.Parent then
+				local elapsedTime = currentTime - bulletData.startTime
+				local distance = ShotgunConstants.BULLET_SPEED * elapsedTime
+				
+				-- Move bullet
+				local newPosition = bulletData.startPosition + (bulletData.direction * distance)
+				bulletData.part.Position = newPosition
+				-- Remove bullet if it has traveled too far
+				if distance > ShotgunConstants.MAX_BULLET_DISTANCE then
+					bulletData.part:Destroy()
+					table.remove(bullets, i)
+				end
+			else
+				-- Bullet was destroyed externally, remove from tracking
+				table.remove(bullets, i)
+			end
+		end
+		
+		-- Return true if there are still bullets to update
+		return #bullets > 0
+	end
 end
 
 function Shotgun.equip()
@@ -240,24 +266,31 @@ function Shotgun.unequip()
     
     local character = Players.LocalPlayer.Character
     if character then
-        -- Use shared handler for instant model unequipping
-        ShotgunHandler.unequipModel(character)
+        -- Remove shotgun model if it exists
+        local shotgunModel = character:FindFirstChild("shotgun")
+        if shotgunModel then
+            shotgunModel:Destroy()
+        end
         cleanupFirstPerson(character)
     end
 end
 
 function Shotgun.fire(startPosition, direction)    
-    -- Play the fire animation
-    currentFireAnimationTrack:Play()
-    
-    local startTime = tick()
-    
-    -- Wait for the animation to finish
-    currentFireAnimationTrack.Stopped:Wait()
-    
-    -- Resume the hold animation
-    if currentHoldAnimationTrack then
-        currentHoldAnimationTrack:Play()
+    -- Play the fire animation if it exists
+    if currentFireAnimationTrack then
+        currentFireAnimationTrack:Play()
+        
+        local startTime = tick()
+        
+        -- Wait for the animation to finish
+        currentFireAnimationTrack.Stopped:Wait()
+        
+        -- Resume the hold animation
+        if currentHoldAnimationTrack then
+            currentHoldAnimationTrack:Play()
+        end
+    else
+        warn("Shotgun fire animation track not loaded")
     end
 end
 

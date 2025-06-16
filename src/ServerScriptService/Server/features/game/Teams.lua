@@ -37,7 +37,7 @@ function Teams.getBossPlayer()
 	return nil
 end
 
-function Teams.initialize()
+function Teams.init()
 	local Teams = game:GetService("Teams")
 	
 	if not Teams:FindFirstChild("Boss") then

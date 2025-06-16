@@ -7,8 +7,8 @@ local ShotgunConstants = {
     
     -- Shot Properties
     PELLETS_PER_SHOT = 8,
-    SPREAD_ANGLE = math.rad(15), -- 15 degrees in radians
-    DAMAGE_PER_PELLET = 10,
+    SPREAD_ANGLE = math.rad(10), -- 15 degrees in radians
+    DAMAGE_PER_PELLET = 5,
     
     -- Visual Effects
     MUZZLE_FLASH_DURATION = 0.1,
@@ -22,6 +22,21 @@ local ShotgunConstants = {
     RECOIL_RECOVERY_SPEED = 5, -- studs per second
 
     FIRE_COOLDOWN = 0.5, -- seconds
+
+    RAYCAST_START_OFFSETS = {
+        Vector3.new(0, 0, 0),     -- Centers
+    },
+
+    SPREAD_DIRECTIONS = {
+        Vector3.new(0, 0, 0),                    -- Center pellet
+        Vector3.new(0.1, 0, 0),                  -- Right
+        Vector3.new(-0.1, 0, 0),                 -- Left
+        Vector3.new(0, 0.1, 0),                  -- Up
+        Vector3.new(0, -0.1, 0),                 -- Down
+        Vector3.new(0.07, 0.07, 0),              -- Top-right diagonal
+        Vector3.new(-0.07, 0.07, 0),             -- Top-left diagonal
+        Vector3.new(0.07, -0.07, 0),             -- Bottom-right diagonal
+    },
 }
 
 return ShotgunConstants 

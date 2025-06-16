@@ -136,11 +136,8 @@ local function createWeaponSelector()
             -- Hide UI immediately for instant feedback
             WeaponSelector.hide()
             
-            -- Equip weapon locally for instant visual response
-            weaponsModule.equip(weapon.weaponType)
-            
-            -- Fire server event for replication
-            WeaponSelectionEvent:FireServer(weapon.weaponType)
+            -- Equip weapon locally and notify server
+            weaponsModule.equipLocal(weapon.weaponType)
         end)
         
         weaponButton.Parent = weaponList
@@ -151,7 +148,7 @@ local function createWeaponSelector()
 end
 
 -- Public Functions
-function WeaponSelector.initialize(weapons)
+function WeaponSelector.init(weapons)
     weaponsModule = weapons
 end
 
@@ -185,9 +182,9 @@ function WeaponSelector.hide()
             camera.CameraType = originalCameraType
         end
         
-        -- Hide mouse cursor and lock mouse
+        -- Hide mouse cursor but allow normal camera movement
         UserInputService.MouseIconEnabled = false
-        UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
+        UserInputService.MouseBehavior = Enum.MouseBehavior.Default
         
         -- Re-enable camera controls
         pcall(function()

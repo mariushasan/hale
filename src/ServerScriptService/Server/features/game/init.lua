@@ -2,7 +2,7 @@ local Teleport = require(game.ServerScriptService.Server.shared.Teleport)
 local Leaderboard = require(game.ServerScriptService.Server.shared.Leaderboard)
 
 local Teams = require(game.ServerScriptService.Server.features.game.Teams)
-local BossFunctions = require(game.ServerScriptService.Server.features.game.Boss)
+local Weapons = require(game.ServerScriptService.Server.features.weapons)
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TimerRemoteEvent = ReplicatedStorage:WaitForChild("TimerRemoteEvent")
@@ -14,9 +14,10 @@ local TeleportPlatform = game.Workspace.WaitingRoom.TeleportPlatform
 local Baseplate = game.Workspace.Baseplate
 
 -- Constants
+local TESTING = false
 local MINUTE = 60
 local GAME_TIME = 3 * MINUTE
-local WAITING_TIME = 15
+local WAITING_TIME = 1
 local DEBOUNCE = 3
 local PLAYER_THRESHOLD = 1
 local states = {
@@ -62,6 +63,10 @@ function startGame()
 	-- Set the game state to playing
 	state = states.PLAYING
 
+	if TESTING then
+		return nil
+	end
+
 	-- Teleport players to the arena
 	teleportToArena:teleportPlayers(playersWaiting)
 
@@ -70,7 +75,8 @@ function startGame()
 
 	-- Make Boss
 	local bossPlayer = Teams.getBossPlayer()
-	BossFunctions.makeBoss(bossPlayer)
+	-- Equip boss attack weapon (handles both server transformation and client notification)
+	Weapons.equipPlayerWeapon(bossPlayer, "bossattack")
 
 	-- Clear players waiting queue
 	for userId in pairs(playersWaiting) do
@@ -101,19 +107,20 @@ function endGame()
 	state = states.END
 
 	-- Reset boss player size and health
-	local bossPlayer = TeamAssignment.getBossPlayer()
-	BossFunctions.removeBoss(bossPlayer)
+	local bossPlayer = Teams.getBossPlayer()
+	-- Reset boss to normal weapon (handles both server de-transformation and client notification)
+	Weapons.equipPlayerWeapon(bossPlayer, "shotgun")
 
 	-- Teleport players back to the waiting room
 	teleportToWait:teleportPlayers(playersInArena)
 
 	-- Back to waiting team
-	TeamAssignment.assignWaitingTeams(playersInArena)
+	Teams.assignWaitingTeams(playersInArena)
 
 	-- Reset player stats
 	local allPlayers = game.Players:GetPlayers()
 	for _, player in pairs(allPlayers) do
-		Leaderboard.setStat(player, "Goals", 0)
+		Leaderboard.setStat(player, "Damage", 0)
 	end
 
 	-- Clear players in arena queue
@@ -123,8 +130,8 @@ function endGame()
 end
 
 -- Event listeners
-function Game.initialize()
-	Teams.initialize()
+function Game.init()
+	Teams.init()
 	TeleportPlatform.Touched:Connect(function(hit)
 		local player = game.Players:GetPlayerFromCharacter(hit.Parent)
 		if player and not playersWaiting[player.UserId] and not deboucedWaitingPlayers[player.UserId] then

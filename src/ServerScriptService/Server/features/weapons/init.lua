@@ -1,15 +1,45 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local TimeSync = require(game.ReplicatedStorage.shared.TimeSync)
+local Leaderboard = require(game.ServerScriptService.Server.shared.Leaderboard)
 
 -- Import constants
+local WeaponsConstants = require(ReplicatedStorage.features.weapons.constants)
 local ShotgunConstants = require(ReplicatedStorage.features.weapons.shotgun.constants)
+local BossAttackConstants = require(ReplicatedStorage.features.weapons.bossattack.constants)
+
+debugLog = require(game.ServerScriptService.Server.shared.DebugLog)
+-- Import server-side weapon modules
+local BossAttackModule = require(script.bossattack)
+local ShotgunModule = require(script.shotgun)
+-- Get weapon constants based on weapon type
+local function getWeaponConstants(weaponType)
+    if weaponType == "shotgun" then
+        return ShotgunConstants
+    elseif weaponType == "bossattack" then
+        return BossAttackConstants
+    else
+        return WeaponsConstants -- fallback to default constants
+    end
+end
+
+-- Get server-side weapon module based on weapon type
+local function getWeaponModule(weaponType)
+    if weaponType == "bossattack" then
+        return BossAttackModule
+    elseif weaponType == "shotgun" then
+        return ShotgunModule
+    else
+        return nil -- No server-side logic needed
+    end
+end
 
 -- Remote events
 local ShootEvent = ReplicatedStorage:WaitForChild("ShootEvent")
 local WeaponSelectionEvent = ReplicatedStorage:WaitForChild("WeaponSelectionEvent")
 
-local ModelLoader = require(game.ServerScriptService.Server.features.weapons.shotgun.ModelLoader)
+local DummySystem = require(script.DummySystem)
 local weapons = {}
 
 -- Store player weapons
@@ -18,37 +48,42 @@ local playerWeaponModels = {}
 
 -- Bullet tracking system
 local activeBullets = {}
-local bulletIdCounter = 0
 local maxBulletLifetime = 5 -- seconds
 
 -- Lag compensation system
-local playerPositionHistory = {}
-local maxHistoryTime = 1 -- Keep 1 second of history
-local positionSampleRate = 1/60 -- Sample 60 times per second
+local playerPositionHistory = {} -- Now keyed by reference part position: [referencePos] = {userId1 = position1, userId2 = position2, ...}
+local MAX_HISTORY_ENTRIES = 60 -- Keep 2 seconds of history (60 FPS * 2 seconds) - enough for network latency
 
--- Valid weapon types
-local VALID_WEAPONS = {
-    ["shotgun"] = true
+-- Lag compensation parts cache
+local lagCompensationCache = {}
+local HOLDING_POSITION = Vector3.new(0, -1000, 0) -- Far away holding area
+
+-- R15 body part names
+local R15_BODY_PARTS = {
+    "Head",
+    "UpperTorso", "LowerTorso",
+    "LeftUpperArm", "LeftLowerArm", "LeftHand",
+    "RightUpperArm", "RightLowerArm", "RightHand", 
+    "LeftUpperLeg", "LeftLowerLeg", "LeftFoot",
+    "RightUpperLeg", "RightLowerLeg", "RightFoot"
 }
 
--- Generate unique bullet ID
-local function generateBulletId()
-    bulletIdCounter = bulletIdCounter + 1
-    return "bullet_" .. bulletIdCounter .. "_" .. tick()
-end
-
 -- Create bullet data structure
-local function createBulletData(bulletId, shooter, weaponType, startPosition, direction)
+local function createBulletData(bulletId, shooter, weaponType, startPosition, spreadDirections)
+    local weaponConstants = getWeaponConstants(weaponType)
+    
     return {
         id = bulletId,
         shooterId = shooter.UserId,
         shooterName = shooter.Name,
         weaponType = weaponType,
         currentPosition = startPosition,
-        direction = direction.Unit,
-        speed = ShotgunConstants.BULLET_SPEED,
-        timestamp = tick(),
-        lastUpdateTime = tick()
+        spreadDirections = spreadDirections,
+        speed = weaponConstants.BULLET_SPEED or WeaponsConstants.DEFAULT_BULLET_SPEED,
+        timestamp = TimeSync.getServerTimeMillis(),
+        lastUpdateTime = TimeSync.getServerTimeMillis(),
+        startPosition = startPosition,
+        maxDistance = weaponConstants.MAX_BULLET_DISTANCE or WeaponsConstants.DEFAULT_MAX_BULLET_DISTANCE
     }
 end
 
@@ -76,20 +111,19 @@ local function removeBullet(bulletId, reason)
         ShootEvent:FireAllClients({
             action = "destroy",
             bulletId = bulletId,
-            reason = reason or "timeout"
         })
     end
 end
 
--- Apply damage to a player
-local function applyDamage(player, damage)
-    if not player or not player.Character then return end
-    
-    local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
-    if humanoid and humanoid.Health > 0 then
-        print("Applying", damage, "damage to", player.Name, "- Health before:", humanoid.Health)
-        humanoid:TakeDamage(damage)
-        print("Health after:", humanoid.Health)
+-- Create explosion effect for boss attacks
+local function createExplosionEffect(position, weaponType)
+    if weaponType == "bossattack" then
+        local effect = Instance.new("Explosion")
+        effect.Position = position
+        effect.BlastRadius = BossAttackConstants.EXPLOSION_BLAST_RADIUS
+        effect.BlastPressure = BossAttackConstants.EXPLOSION_BLAST_PRESSURE
+        effect.Visible = true
+        effect.Parent = workspace
     end
 end
 
@@ -98,8 +132,9 @@ local function updateBullets(deltaTime)
     local bulletsToRemove = {}
     
     for bulletId, bulletData in pairs(activeBullets) do
-        local currentTime = tick()
+        local currentTime = TimeSync.getServerTimeMillis()
         local timeSinceLastUpdate = currentTime - bulletData.lastUpdateTime
+        local weaponConstants = getWeaponConstants(bulletData.weaponType)
         
         -- Calculate new position
         local moveDistance = bulletData.speed * timeSinceLastUpdate
@@ -108,39 +143,42 @@ local function updateBullets(deltaTime)
         -- Create raycast parameters
         local raycastParams = RaycastParams.new()
         raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
-        raycastParams.FilterDescendantsInstances = {Players:GetPlayerByUserId(bulletData.shooterId).Character}
+        
+        -- Create blacklist of all characters (players and dummies) so raycast only hits lag compensation parts
+        local blacklist = {bulletData.shooter.Character} -- Always exclude the shooter
+        
+        -- Add all other players to blacklist
+        for _, otherPlayer in ipairs(Players:GetPlayers()) do
+            if otherPlayer ~= bulletData.shooter and otherPlayer.Character then
+                table.insert(blacklist, otherPlayer.Character)
+            end
+        end
+        
+        -- Add all dummies to blacklist
+        local allDummies = DummySystem.getAllDummies()
+        for _, dummy in ipairs(allDummies) do
+            if dummy then
+                table.insert(blacklist, dummy)
+            end
+        end
+        
+        raycastParams.FilterDescendantsInstances = blacklist
         
         -- Perform raycast from current position to new position
         local raycastResult = workspace:Raycast(bulletData.currentPosition, newPosition - bulletData.currentPosition, raycastParams)
-        
+
         if raycastResult then
             -- Bullet hit something
             local hitPart = raycastResult.Instance
             local hitCharacter = hitPart.Parent
-            
-            print("Bullet hit:", hitPart.Name, "in character:", hitCharacter.Name)
-            
-            -- Check if we hit a player
+            -- Handle regular projectile damage
             if hitCharacter:FindFirstChildOfClass("Humanoid") then
-                print("Found humanoid in:", hitCharacter.Name)
-                local hitPlayer = Players:GetPlayerFromCharacter(hitCharacter)
-                if hitPlayer then
-                    print("Hit player:", hitPlayer.Name)
-                    -- Apply damage based on weapon type
-                    local damage = ShotgunConstants.DAMAGE_PER_PELLET
-                    applyDamage(hitPlayer, damage)
-                else
-                    print("Hit character with humanoid but no associated player:", hitCharacter.Name)
-                    -- Handle non-player characters (dummies, NPCs, etc.)
-                    local humanoid = hitCharacter:FindFirstChildOfClass("Humanoid")
-                    if humanoid then
-                        print("Applying damage to NPC/dummy:", hitCharacter.Name, "- Health before:", humanoid.Health)
-                        humanoid:TakeDamage(ShotgunConstants.DAMAGE_PER_PELLET)
-                        print("Health after:", humanoid.Health)
-                    end
+                local damage = weaponConstants.DAMAGE_PER_PELLET or weaponConstants.DAMAGE
+                hitCharacter:FindFirstChildOfClass("Humanoid"):TakeDamage(damage)
+                local player = Players:GetPlayerByUserId(bulletData.shooterId)
+                if player.Team.Name == "Other" then
+                    Leaderboard.addToStat(player, "Damage", 1)
                 end
-            else
-                print("No humanoid found in hit character:", hitCharacter.Name)
             end
             
             table.insert(bulletsToRemove, {id = bulletId, reason = "collision"})
@@ -150,8 +188,9 @@ local function updateBullets(deltaTime)
             bulletData.lastUpdateTime = currentTime
             
             -- Check if bullet has traveled too far
-            local totalDistance = (bulletData.currentPosition - bulletData.currentPosition).Magnitude
-            if totalDistance > ShotgunConstants.MAX_BULLET_DISTANCE then
+            local totalDistance = (bulletData.currentPosition - bulletData.startPosition).Magnitude
+            
+            if totalDistance > bulletData.maxDistance then
                 table.insert(bulletsToRemove, {id = bulletId, reason = "max_distance"})
             end
             
@@ -200,41 +239,71 @@ local function unequipWeaponModel(player)
     end
 end
 
--- Store player position for lag compensation
-local function recordPlayerPosition(player)
-    if not player.Character or not player.Character.PrimaryPart then return end
+-- Record all player positions using reference part position as key
+local function recordAllPlayerPositions()
+    local referencePart = workspace:FindFirstChild("LagCompensationReference")
+    if not referencePart then return end
     
-    local userId = player.UserId
-    local currentTime = tick()
-    local position = player.Character.PrimaryPart.Position
+    local referencePosition = referencePart.Position
+    local currentTime = TimeSync.getServerTimeMillis()
     
-    if not playerPositionHistory[userId] then
-        playerPositionHistory[userId] = {}
+    -- Create entry for this reference position
+    local positionEntry = {
+        time = currentTime,
+        players = {},
+        dummies = {}
+    }
+    
+    -- Record all player positions
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player.Character and player.Character.PrimaryPart then
+            positionEntry.players[player.UserId] = {
+                position = player.Character.PrimaryPart.Position,
+                character = player.Character
+            }
+        end
     end
     
-    -- Add current position to history
-    table.insert(playerPositionHistory[userId], {
-        time = currentTime,
-        position = position,
-        character = player.Character
-    })
-    
-    -- Clean up old history
-    local cutoffTime = currentTime - maxHistoryTime
-    local history = playerPositionHistory[userId]
-    for i = #history, 1, -1 do
-        if history[i].time < cutoffTime then
-            table.remove(history, i)
+    -- Record all dummy positions
+    local allDummies = DummySystem.getAllDummies()
+    for _, dummy in ipairs(allDummies) do
+        if dummy and dummy.PrimaryPart then
+            positionEntry.dummies[dummy.Name] = {
+                position = dummy.PrimaryPart.Position,
+                dummy = dummy
+            }
         end
+    end
+    
+    -- Store using reference position as key (convert to string for table key)
+    local positionKey = string.format("%.2f,%.2f,%.2f", referencePosition.X, referencePosition.Y, referencePosition.Z)
+    playerPositionHistory[positionKey] = positionEntry
+    
+    -- Clean up old entries (keep only recent ones)
+    local historyKeys = {}
+    for key, _ in pairs(playerPositionHistory) do
+        table.insert(historyKeys, key)
+    end
+    
+    -- Sort by time and remove oldest entries
+    table.sort(historyKeys, function(a, b)
+        return playerPositionHistory[a].time > playerPositionHistory[b].time
+    end)
+    
+    -- Keep only the most recent entries
+    for i = MAX_HISTORY_ENTRIES + 1, #historyKeys do
+        playerPositionHistory[historyKeys[i]] = nil
     end
 end
 
--- Get player position at a specific time in the past
-local function getPlayerPositionAtTime(player, targetTime)
-    local userId = player.UserId
-    local history = playerPositionHistory[userId]
+-- Get player position at reference part position
+local function getPlayerPositionAtReferencePosition(player, referencePosition)
+    local positionKey = string.format("%.2f,%.2f,%.2f", referencePosition.X, referencePosition.Y, referencePosition.Z)
+    local entry = playerPositionHistory[positionKey]
+
+    print("entry", entry)
     
-    if not history or #history == 0 then
+    if not entry or not entry.players[player.UserId] then
         -- No history available, use current position
         if player.Character and player.Character.PrimaryPart then
             return player.Character.PrimaryPart.Position, player.Character
@@ -242,71 +311,306 @@ local function getPlayerPositionAtTime(player, targetTime)
         return nil, nil
     end
     
-    -- Find the closest recorded position to the target time
-    local closestEntry = history[1]
-    local closestTimeDiff = math.abs(history[1].time - targetTime)
+    local playerData = entry.players[player.UserId]
+    return playerData.position, playerData.character
+end
+
+-- Get dummy position at reference part position
+local function getDummyPositionAtReferencePosition(dummy, referencePosition)
+    local positionKey = string.format("%.2f,%.2f,%.2f", referencePosition.X, referencePosition.Y, referencePosition.Z)
+    local entry = playerPositionHistory[positionKey]
+
+    print("entry", entry)
     
-    for _, entry in ipairs(history) do
-        local timeDiff = math.abs(entry.time - targetTime)
-        if timeDiff < closestTimeDiff then
-            closestTimeDiff = timeDiff
-            closestEntry = entry
+    if not entry or not entry.dummies[dummy.Name] then
+        -- No history available, use current position
+        if dummy.PrimaryPart then
+            return dummy.PrimaryPart.Position, dummy
+        end
+        return nil, nil
+    end
+    
+    local dummyData = entry.dummies[dummy.Name]
+    return dummyData.position, dummyData.dummy
+end
+
+-- Create lag compensation parts for a player/dummy and store in cache
+local function createLagCompensationPartsForCharacter(character, characterKey, isPlayer)
+    if not character or not character.PrimaryPart then
+        return
+    end
+    
+    local parts = {}
+    
+    -- Create lag compensation part for each body part found
+    for _, partName in ipairs(R15_BODY_PARTS) do
+        local bodyPart = character:FindFirstChild(partName)
+        if bodyPart and bodyPart:IsA("BasePart") then
+            
+            -- Create lag compensation part matching this body part
+            local lagPart = Instance.new("Part")
+            lagPart.Name = "LagCompensation_" .. characterKey .. "_" .. partName
+            lagPart.Size = bodyPart.Size
+            lagPart.Position = HOLDING_POSITION -- Store in holding area
+            lagPart.Rotation = Vector3.new(0, 0, 0) -- Reset rotation
+            lagPart.Anchored = true
+            lagPart.CanCollide = false -- Disabled when in holding area
+            lagPart.Transparency = 1 -- Invisible when in holding area
+            
+            -- Different colors for players vs dummies
+            if isPlayer then
+                lagPart.BrickColor = BrickColor.new("Bright blue")
+            else
+                lagPart.BrickColor = BrickColor.new("Bright red")
+            end
+            
+            lagPart.Material = Enum.Material.Neon
+            lagPart.Parent = workspace
+            
+            -- Add character reference
+            if isPlayer then
+                local playerValue = Instance.new("ObjectValue")
+                playerValue.Name = "PlayerRef"
+                playerValue.Value = Players:GetPlayerFromCharacter(character)
+                playerValue.Parent = lagPart
+            else
+                local dummyValue = Instance.new("ObjectValue")
+                dummyValue.Name = "DummyRef"
+                dummyValue.Value = character
+                dummyValue.Parent = lagPart
+            end
+            
+            parts[partName] = lagPart
         end
     end
     
-    return closestEntry.position, closestEntry.character
+    lagCompensationCache[characterKey] = parts
+end
+
+-- Remove lag compensation parts from cache
+local function removeLagCompensationPartsFromCache(characterKey)
+    local parts = lagCompensationCache[characterKey]
+    if parts then
+        for partName, lagPart in pairs(parts) do
+            if lagPart and lagPart.Parent then
+                lagPart:Destroy()
+            end
+        end
+        lagCompensationCache[characterKey] = nil
+    end
 end
 
 -- Temporarily move players to their positions at fire time
-local function setupLagCompensation(fireTime, shooter)
-    local originalPositions = {}
+local function setupLagCompensation(referencePosition, shooter)    
+    local lagCompensationParts = {}
     
+    -- Handle players
     for _, player in ipairs(Players:GetPlayers()) do
         if player ~= shooter and player.Character and player.Character.PrimaryPart then
-            -- Store original position
-            originalPositions[player.UserId] = player.Character.PrimaryPart.Position
-            
-            -- Get position at fire time
-            local pastPosition, pastCharacter = getPlayerPositionAtTime(player, fireTime)
-            if pastPosition then
-                -- Move player to past position
-                player.Character.PrimaryPart.Position = pastPosition
+            -- Get position at reference position
+            local pastPosition, pastCharacter = getPlayerPositionAtReferencePosition(player, referencePosition)
+
+            if pastPosition and player.Character:FindFirstChildOfClass("Humanoid") then
+                -- Get cached lag compensation parts for this player
+                local cachedParts = lagCompensationCache[tostring(player.UserId)]
+                if cachedParts then
+                    -- Calculate position offset from character's PrimaryPart to past position
+                    local positionOffset = pastPosition - player.Character.PrimaryPart.Position
+                    
+                    -- Move cached parts to correct positions
+                    for partName, lagPart in pairs(cachedParts) do
+                        local bodyPart = player.Character:FindFirstChild(partName)
+                        if bodyPart and lagPart and lagPart.Parent then
+                            lagPart.Position = bodyPart.Position + positionOffset
+                            lagPart.Rotation = bodyPart.Rotation
+                            lagPart.CanCollide = false -- Keep collision disabled to prevent characters getting stuck
+                            lagPart.Transparency = 0.3 -- Make visible
+                            
+                            table.insert(lagCompensationParts, lagPart)
+                        end
+                    end
+                end
             end
         end
     end
     
-    return originalPositions
+    -- Handle dummies
+    local allDummies = DummySystem.getAllDummies()
+    
+    for i, dummy in ipairs(allDummies) do
+        if dummy and dummy.PrimaryPart and dummy:FindFirstChildOfClass("Humanoid") then
+            -- Get dummy's position at reference position
+            local pastPosition, pastDummy = getDummyPositionAtReferencePosition(dummy, referencePosition)
+            print("SERVER (PAST) - " .. pastDummy.Name .. " position:", pastPosition)
+
+            if pastPosition then
+                -- Get cached lag compensation parts for this dummy
+                local cachedParts = lagCompensationCache[dummy.Name]
+                if cachedParts then
+                    -- Calculate position offset from dummy's PrimaryPart to past position
+                    local positionOffset = pastPosition - dummy.PrimaryPart.Position
+                    
+                    -- Move cached parts to correct positions
+                    for partName, lagPart in pairs(cachedParts) do
+                        local bodyPart = dummy:FindFirstChild(partName)
+                        if bodyPart and lagPart and lagPart.Parent then
+                            lagPart.Position = bodyPart.Position + positionOffset
+                            lagPart.Rotation = bodyPart.Rotation
+                            lagPart.CanCollide = false -- Keep collision disabled to prevent characters getting stuck
+                            lagPart.Transparency = 0.3 -- Make visible
+                            
+                            table.insert(lagCompensationParts, lagPart)
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    return lagCompensationParts
 end
 
 -- Restore players to their current positions
-local function restoreLagCompensation(originalPositions)
-    for userId, originalPosition in pairs(originalPositions) do
-        local player = Players:GetPlayerByUserId(userId)
-        if player and player.Character and player.Character.PrimaryPart then
-            player.Character.PrimaryPart.Position = originalPosition
+local function restoreLagCompensation(lagCompensationParts)
+    for i, part in ipairs(lagCompensationParts) do
+        if part and part.Parent then
+            -- Move back to holding area instead of destroying
+            part.Position = HOLDING_POSITION
+            part.Transparency = 1 -- Make invisible
+            part.Rotation = Vector3.new(0, 0, 0) -- Reset rotation
         end
     end
 end
 
+-- Public function to equip a weapon for a player (handles both server logic and client notification)
+function weapons.equipPlayerWeapon(player, weaponType)
+    -- Validate weapon type
+    if not WeaponsConstants.VALID_WEAPONS[weaponType] then
+        warn("Invalid weapon type for equipPlayerWeapon:", weaponType)
+        return
+    end
+    
+    -- Get previous weapon for unequipping
+    local previousWeapon = playerWeapons[player.UserId]
+    
+    -- Unequip previous weapon's server-side logic
+    if previousWeapon then
+        local previousServerModule = getWeaponModule(previousWeapon)
+        if previousServerModule and previousServerModule.unequip then
+            previousServerModule.unequip(player)
+        end
+    end
+    
+    -- Store the selected weapon for this player
+    playerWeapons[player.UserId] = weaponType
+    
+    -- Equip new weapon's server-side logic
+    local newServerModule = getWeaponModule(weaponType)
+    if newServerModule and newServerModule.equip then
+        newServerModule.equip(player)
+    end
+    
+    -- Equip the weapon model visually
+    equipWeaponModel(player, weaponType)
+    
+    -- Store it in the player's character for persistence
+    if player.Character then
+        local weaponValue = player.Character:FindFirstChild("SelectedWeapon")
+        if not weaponValue then
+            weaponValue = Instance.new("StringValue")
+            weaponValue.Name = "SelectedWeapon"
+            weaponValue.Parent = player.Character
+        end
+        weaponValue.Value = weaponType
+    end
+    
+    -- Notify client about the weapon change
+    WeaponSelectionEvent:FireClient(player, weaponType)
+end
+
 -- Handle weapon selection
-function weapons.init()
-    ModelLoader()
+function weapons.init()    
+    -- Initialize dummy system
+    DummySystem.init()
+    
+    -- Cache lag compensation parts for existing dummies
+    local allDummies = DummySystem.getAllDummies()
+    for _, dummy in ipairs(allDummies) do
+        if dummy and dummy.PrimaryPart and dummy:FindFirstChildOfClass("Humanoid") then
+            createLagCompensationPartsForCharacter(dummy, dummy.Name, false)
+        end
+    end
     
     -- Start bullet update loop
     RunService.Heartbeat:Connect(updateBullets)
     
     -- Start position recording for lag compensation
     RunService.Heartbeat:Connect(function()
-        for _, player in ipairs(Players:GetPlayers()) do
-            recordPlayerPosition(player)
+        recordAllPlayerPositions()
+    end)
+    
+    -- Handle players joining - create lag compensation cache
+    Players.PlayerAdded:Connect(function(player)
+        
+        player.CharacterAdded:Connect(function(character)
+            -- Wait for character to fully load
+            if character:FindFirstChild("Humanoid") and character.PrimaryPart then
+                -- Create lag compensation parts cache for this player
+                createLagCompensationPartsForCharacter(character, tostring(player.UserId), true)
+            else
+                -- Wait for character to fully load then create cache
+                local humanoid = character:WaitForChild("Humanoid", 10)
+                local primaryPart = character:WaitForChild("HumanoidRootPart", 10)
+                if humanoid and primaryPart then
+                    createLagCompensationPartsForCharacter(character, tostring(player.UserId), true)
+                else
+                    warn("Failed to create lag compensation cache for player " .. player.Name)
+                end
+            end
+        end)
+    end)
+    
+    -- Handle players leaving - clean up cache
+    Players.PlayerRemoving:Connect(function(player)
+        removeLagCompensationPartsFromCache(tostring(player.UserId))
+        
+        -- Unequip weapon's server-side logic before cleanup
+        local currentWeapon = playerWeapons[player.UserId]
+        if currentWeapon then
+            local serverModule = getWeaponModule(currentWeapon)
+            if serverModule and serverModule.unequip then
+                serverModule.unequip(player)
+            end
+        end
+        
+        -- Clean up other player data
+        unequipWeaponModel(player)
+        playerWeapons[player.UserId] = nil
+        playerWeaponModels[player.UserId] = nil
+        
+        -- Remove any bullets from this player
+        local bulletsToRemove = {}
+        for bulletId, bulletData in pairs(activeBullets) do
+            if bulletData.shooterId == player.UserId then
+                table.insert(bulletsToRemove, bulletId)
+            end
+        end
+        
+        for _, bulletId in ipairs(bulletsToRemove) do
+            removeBullet(bulletId)
         end
     end)
     
-    WeaponSelectionEvent.OnServerEvent:Connect(function(player, weaponType)
-        -- Validate weapon type
-        if not VALID_WEAPONS[weaponType] then
-            warn("Invalid weapon type selected:", weaponType)
-            return
+    WeaponSelectionEvent.OnServerEvent:Connect(function(player, weaponType)        
+        -- Get previous weapon for unequipping
+        local previousWeapon = playerWeapons[player.UserId]
+        
+        -- Unequip previous weapon's server-side logic
+        if previousWeapon then
+            local previousServerModule = getWeaponModule(previousWeapon)
+            if previousServerModule and previousServerModule.unequip then
+                previousServerModule.unequip(player)
+            end
         end
         
         -- Unequip current weapon model
@@ -314,6 +618,12 @@ function weapons.init()
         
         -- Store the selected weapon for this player
         playerWeapons[player.UserId] = weaponType
+        
+        -- Equip new weapon's server-side logic
+        local newServerModule = getWeaponModule(weaponType)
+        if newServerModule and newServerModule.equip then
+            newServerModule.equip(player)
+        end
         
         -- Equip the weapon model visually
         equipWeaponModel(player, weaponType)
@@ -331,164 +641,133 @@ function weapons.init()
     end)
 
     -- Handle shooting with bullet tracking
-    ShootEvent.OnServerEvent:Connect(function(player, startPosition, direction, clientTimestamp)
+    ShootEvent.OnServerEvent:Connect(function(player, bulletId, startPosition, referencePartPosition, direction)
         -- Get the player's selected weapon
         local weaponType = playerWeapons[player.UserId]
-        
-        -- Validate weapon type before using
-        if not VALID_WEAPONS[weaponType] then
-            warn("Invalid weapon type detected:", weaponType)
-            return
+        local weaponConstants = getWeaponConstants(weaponType)
+        local weaponModule = getWeaponModule(weaponType)
+
+        for _, child in pairs(workspace:GetChildren()) do
+            if child:IsA("Model") and child.Name:find("TestDummy") and child.PrimaryPart then
+                local dummyPosition = child.PrimaryPart.Position
+            end
         end
         
-        -- Calculate when the client actually fired
-        local serverTime = tick()
-        local clientFireTime = clientTimestamp or serverTime
+        -- Use reference position directly for lag compensation
+        local serverTime = TimeSync.getServerTimeMillis()
         
-        -- Setup lag compensation - rewind other players to fire time
-        local originalPositions = setupLagCompensation(clientFireTime, player)
+        -- Setup lag compensation using reference position directly
+        local lagCompensationParts = setupLagCompensation(referencePartPosition, player)
         
-        -- For shotgun, create multiple bullets with spread
-        if weaponType == "shotgun" then
-            for i = 1, ShotgunConstants.PELLETS_PER_SHOT do
-                -- Create spread for each pellet
-                local spreadX = (math.random() - 0.5) * 2 * ShotgunConstants.SPREAD_ANGLE
-                local spreadY = (math.random() - 0.5) * 2 * ShotgunConstants.SPREAD_ANGLE
-                local spreadDirection = CFrame.fromOrientation(spreadX, spreadY, 0) * direction.Unit
-                
-                -- Generate unique bullet ID
-                local bulletId = generateBulletId()
-                
-                -- Calculate fast-forward distance
-                local networkDelay = serverTime - clientFireTime
-                local fastForwardDistance = ShotgunConstants.BULLET_SPEED * networkDelay
-                local fastForwardedStartPosition = startPosition + (spreadDirection * fastForwardDistance)
-                
-                -- Check for immediate collision during fast-forward period (with lag compensation)
-                local raycastParams = RaycastParams.new()
-                raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
-                raycastParams.FilterDescendantsInstances = {player.Character}
-                
-                local fastForwardRaycast = workspace:Raycast(startPosition, spreadDirection * fastForwardDistance, raycastParams)
-                
+        -- Calculate camera-relative spread directions (same as client)
+        local forwardVector = direction.Unit
+        local rightVector = forwardVector:Cross(Vector3.new(0, 1, 0)).Unit
+        local upVector = rightVector:Cross(forwardVector).Unit
+        
+        local spreadDirections = {
+            forwardVector,                                           -- Center 
+        }
+        
+        for i, spreadDirection in ipairs(spreadDirections) do
+            -- Add error handling for pellet processing
+            local pelletBulletId = bulletId .. "_pellet_" .. i
+            
+            -- Check for immediate collision during fast-forward period (with lag compensation)
+            local raycastParams = RaycastParams.new()
+            raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+            
+            -- Create blacklist of all characters (players and dummies) so raycast only hits lag compensation parts
+            local blacklist = {player.Character} -- Always exclude the shooter
+            
+            -- Add all other players to blacklist
+            for _, otherPlayer in ipairs(Players:GetPlayers()) do
+                if otherPlayer ~= player and otherPlayer.Character then
+                    table.insert(blacklist, otherPlayer.Character)
+                end
+            end
+            
+            -- Add all dummies to blacklist
+            local allDummies = DummySystem.getAllDummies()
+            for _, dummy in ipairs(allDummies) do
+                if dummy then
+                    table.insert(blacklist, dummy)
+                end
+            end
+            
+            raycastParams.FilterDescendantsInstances = blacklist
+
+            for j, raycastStartOffset in ipairs(weaponConstants.RAYCAST_START_OFFSETS) do
+                -- Use the spread direction directly (it's already calculated relative to aim direction)
+                local raycastDirection = spreadDirection.Unit * weaponConstants.MAX_BULLET_DISTANCE
+                local fastForwardRaycast = workspace:Raycast(startPosition + raycastStartOffset, raycastDirection, raycastParams)
+                print("fastForwardRaycast", fastForwardRaycast)
                 if fastForwardRaycast then
-                    -- Hit something during fast-forward, handle damage immediately
                     local hitPart = fastForwardRaycast.Instance
                     local hitCharacter = hitPart.Parent
                     
-                    print("Lag-compensated raycast hit:", hitPart.Name, "in character:", hitCharacter.Name)
-                    
-                    if hitCharacter:FindFirstChildOfClass("Humanoid") then
-                        local hitPlayer = Players:GetPlayerFromCharacter(hitCharacter)
-                        if hitPlayer then
-                            -- Apply damage to player
-                            local damage = ShotgunConstants.DAMAGE_PER_PELLET
-                            applyDamage(hitPlayer, damage)
-                        else
-                            -- Apply damage to NPC/dummy
-                            local humanoid = hitCharacter:FindFirstChildOfClass("Humanoid")
+                    -- Check if we hit a lag compensation part
+                    if hitPart.Name:find("LagCompensation_") then
+                        local playerRef = hitPart:FindFirstChild("PlayerRef")
+                        local dummyRef = hitPart:FindFirstChild("DummyRef")
+                        
+                        if playerRef and playerRef.Value then
+                            local hitPlayer = playerRef.Value
+                            local damage = weaponConstants.DAMAGE_PER_PELLET or weaponConstants.DAMAGE
+                            local humanoid = hitPlayer.Character:FindFirstChildOfClass("Humanoid")
                             if humanoid then
-                                print("Applying lag-compensated damage to NPC/dummy:", hitCharacter.Name, "- Health before:", humanoid.Health)
-                                humanoid:TakeDamage(ShotgunConstants.DAMAGE_PER_PELLET)
-                                print("Health after:", humanoid.Health)
+                                humanoid:TakeDamage(damage)
+                                if player.Team.Name == "Other" then
+                                    Leaderboard.addToStat(player, "Damage", 1)
+                                end
                             end
+                        elseif dummyRef and dummyRef.Value then
+                            local hitDummy = dummyRef.Value
+                            local damage = weaponConstants.DAMAGE_PER_PELLET or weaponConstants.DAMAGE
+                            local humanoid = hitDummy:FindFirstChildOfClass("Humanoid")
+                            print("SERVER (HIT DUMMY) - " .. hitDummy.Name)
+                            print(humanoid)
+                            if humanoid then
+                                humanoid:TakeDamage(damage)
+                                if player.Team.Name == "Other" then
+                                    Leaderboard.addToStat(player, "Damage", 1)
+                                end
+                            end
+                        else
+                            warn("Lag compensation part missing reference: " .. hitPart.Name)
                         end
                     end
-                    
-                    -- Don't create a bullet since it hit something immediately
-                    removeBullet(bulletId, "immediate_collision")
-                else
-                    -- No immediate hit, create bullet at fast-forwarded position
-                    local bulletData = createBulletData(
-                        bulletId, 
-                        player, 
-                        weaponType, 
-                        fastForwardedStartPosition, 
-                        spreadDirection
-                    )
-                    
-                    -- Adjust timestamp to account for the fast-forward
-                    bulletData.timestamp = clientFireTime
-                    bulletData.lastUpdateTime = serverTime
-                    
-                    -- Track bullet on server and replicate to other clients
-                    trackBullet(bulletData)
+                    break
                 end
+            end
+        end
+
+        -- Send single event to other clients with all spread directions
+        local bulletData = createBulletData(
+            bulletId, 
+            player, 
+            weaponType, 
+            startPosition, 
+            spreadDirections
+        )
+        
+        -- Adjust timestamp to account for any processing
+        bulletData.timestamp = serverTime
+        bulletData.lastUpdateTime = serverTime
+        
+        -- Send to all clients except the shooter
+        for _, otherPlayer in ipairs(Players:GetPlayers()) do
+            if otherPlayer.UserId ~= player.UserId then
+                ShootEvent:FireClient(otherPlayer, {
+                    action = "create",
+                    bulletData = bulletData
+                })
             end
         end
         
         -- Restore lag compensation - move players back to current positions
-        restoreLagCompensation(originalPositions)
+        wait(2)
+        restoreLagCompensation(lagCompensationParts)
     end)
-
-    -- Clean up when players leave
-    Players.PlayerRemoving:Connect(function(player)
-        unequipWeaponModel(player)
-        playerWeapons[player.UserId] = nil
-        playerWeaponModels[player.UserId] = nil
-        
-        -- Remove any bullets from this player
-        local bulletsToRemove = {}
-        for bulletId, bulletData in pairs(activeBullets) do
-            if bulletData.shooterId == player.UserId then
-                table.insert(bulletsToRemove, bulletId)
-            end
-        end
-        
-        for _, bulletId in ipairs(bulletsToRemove) do
-            removeBullet(bulletId)
-        end
-    end)
-
-    -- Handle character respawning
-    Players.PlayerAdded:Connect(function(player)
-        player.CharacterAdded:Connect(function(character)
-            -- Clean up old weapon model reference
-            playerWeaponModels[player.UserId] = nil
-            
-            -- Restore the player's weapon selection when they respawn
-            local weaponType = playerWeapons[player.UserId]
-            if weaponType then
-                local weaponValue = character:FindFirstChild("SelectedWeapon")
-                if not weaponValue then
-                    weaponValue = Instance.new("StringValue")
-                    weaponValue.Name = "SelectedWeapon"
-                    weaponValue.Parent = character
-                end
-                weaponValue.Value = weaponType
-                
-                -- Re-equip the weapon model after a short delay to ensure character is fully loaded
-                task.wait(1)
-                equipWeaponModel(player, weaponType)
-            end
-        end)
-    end)
-
-    -- Handle existing players
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player.Character then
-            player.CharacterAdded:Connect(function(character)
-                -- Clean up old weapon model reference
-                playerWeaponModels[player.UserId] = nil
-                
-                -- Restore the player's weapon selection when they respawn
-                local weaponType = playerWeapons[player.UserId]
-                if weaponType then
-                    local weaponValue = character:FindFirstChild("SelectedWeapon")
-                    if not weaponValue then
-                        weaponValue = Instance.new("StringValue")
-                        weaponValue.Name = "SelectedWeapon"
-                        weaponValue.Parent = character
-                    end
-                    weaponValue.Value = weaponType
-                    
-                    -- Re-equip the weapon model after a short delay
-                    task.wait(1)
-                    equipWeaponModel(player, weaponType)
-                end
-            end)
-        end
-    end
 end
 
 return weapons
