@@ -343,14 +343,6 @@ function Weapons.fire(bulletId, weaponType, startPosition, direction)
 			if raycastResult then
 				hitPart = raycastResult.Instance
 				hitPosition = raycastResult.Position
-				
-				-- Log what we hit on client
-				print("CLIENT HIT:", hitPart.Name, "at position:", hitPosition)
-				if hitPart.Parent and hitPart.Parent:FindFirstChildOfClass("Humanoid") then
-					print("CLIENT HIT CHARACTER:", hitPart.Parent.Name)
-				end
-			else
-				print("CLIENT: No hit detected")
 			end
 			
 			-- Send shoot event to server with hit information instead of reference position

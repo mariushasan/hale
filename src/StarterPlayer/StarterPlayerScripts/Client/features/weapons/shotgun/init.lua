@@ -160,14 +160,31 @@ function Shotgun.animateBullet(providedStartPosition, providedDirection)
 	local startPosition = providedStartPosition or (camera.CFrame.Position + camera.CFrame.LookVector * 2)
 	local direction = providedDirection or camera.CFrame.LookVector
 	
-	-- Get camera's right and up vectors for proper 3D spread
-	local rightVector = camera.CFrame.RightVector
-	local upVector = camera.CFrame.UpVector
 	local forwardVector = direction.Unit
+	local rightVector, upVector
+
+    print("providedDirection", providedDirection)
+	
+	if providedDirection then
+		-- For bullets from other players, calculate right/up vectors from the provided direction
+		-- Cross product with world up vector (0,1,0) to get right vector
+		rightVector = forwardVector:Cross(Vector3.new(0, 1, 0))
+
+        print("rightVector", rightVector)
+		
+		-- Cross product of right and forward to get up vector
+		upVector = rightVector:Cross(forwardVector).Unit
+
+        print("upVector", upVector)
+	else
+		-- For local player, use camera orientation for natural feel
+		rightVector = camera.CFrame.RightVector
+		upVector = camera.CFrame.UpVector
+	end
 	
 	local bullets = {}
 	
-	-- Create spread pattern using camera orientation
+	-- Create spread pattern using calculated orientation
 	local spreadDirections = {
 		forwardVector,                                           -- Center
 		forwardVector + rightVector * 0.1,                      -- Right

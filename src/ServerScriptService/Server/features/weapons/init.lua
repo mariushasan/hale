@@ -62,31 +62,12 @@ local function createBulletData(bulletId, shooter, weaponType, startPosition, sp
     return {
         id = bulletId,
         shooterId = shooter.UserId,
-        shooterName = shooter.Name,
         weaponType = weaponType,
         currentPosition = startPosition,
         spreadDirections = spreadDirections,
-        speed = weaponConstants.BULLET_SPEED or WeaponsConstants.DEFAULT_BULLET_SPEED,
-        timestamp = TimeSync.getServerTimeMillis(),
         lastUpdateTime = TimeSync.getServerTimeMillis(),
         startPosition = startPosition,
-        maxDistance = weaponConstants.MAX_BULLET_DISTANCE or WeaponsConstants.DEFAULT_MAX_BULLET_DISTANCE
     }
-end
-
--- Add bullet to tracking system
-local function trackBullet(bulletData)
-    activeBullets[bulletData.id] = bulletData
-    
-    -- Send to all clients except the shooter
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player.UserId ~= bulletData.shooterId then
-            ShootEvent:FireClient(player, {
-                action = "create",
-                bulletData = bulletData
-            })
-        end
-    end
 end
 
 -- Remove bullet from tracking system
@@ -99,18 +80,6 @@ local function removeBullet(bulletId, reason)
             action = "destroy",
             bulletId = bulletId,
         })
-    end
-end
-
--- Create explosion effect for boss attacks
-local function createExplosionEffect(position, weaponType)
-    if weaponType == "bossattack" then
-        local effect = Instance.new("Explosion")
-        effect.Position = position
-        effect.BlastRadius = BossAttackConstants.EXPLOSION_BLAST_RADIUS
-        effect.BlastPressure = BossAttackConstants.EXPLOSION_BLAST_PRESSURE
-        effect.Visible = true
-        effect.Parent = workspace
     end
 end
 
@@ -160,7 +129,7 @@ local function updateBullets(deltaTime)
             local hitCharacter = hitPart.Parent
             -- Handle regular projectile damage
             if hitCharacter:FindFirstChildOfClass("Humanoid") then
-                local damage = weaponConstants.DAMAGE_PER_PELLET or weaponConstants.DAMAGE
+                local damage = weaponConstants.DAMAGE_PER_BULLET or weaponConstants.DAMAGE
                 hitCharacter:FindFirstChildOfClass("Humanoid"):TakeDamage(damage)
                 local player = Players:GetPlayerByUserId(bulletData.shooterId)
                 if player.Team.Name == "Other" then
@@ -511,7 +480,7 @@ function weapons.init()
                 
                 -- Verify the hit by checking historical positions
                 local isValidHit = false
-                local damage = weaponConstants.DAMAGE_PER_PELLET or weaponConstants.DAMAGE
+                local damage = weaponConstants.DAMAGE_PER_BULLET or weaponConstants.DAMAGE
                 
                 -- Check if it's a player
                 local hitPlayer = Players:GetPlayerFromCharacter(hitCharacter)
@@ -568,6 +537,20 @@ function weapons.init()
             end
         else
             print("SERVER: No hit information from client")
+        end
+
+        local bulletData = createBulletData(bulletId, player, weaponType, startPosition, direction)
+
+        print("bulletData", bulletData)
+
+        for _, player in ipairs(Players:GetPlayers()) do
+            print("player", player.UserId, bulletData.shooterId)
+            if player.UserId ~= bulletData.shooterId then
+                ShootEvent:FireClient(player, {
+                    action = "create",
+                    bulletData = bulletData
+                })
+            end
         end
     end)
 end

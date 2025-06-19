@@ -24,6 +24,12 @@
       },
       "BossAttackEvent": {
         "$className": "RemoteEvent"
+      },
+      "InventoryEvent": {
+        "$className": "RemoteEvent"
+      },
+      "PurchaseEvent": {
+        "$className": "RemoteEvent"
       }
     },
     "ServerScriptService": {

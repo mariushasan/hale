@@ -1,4 +1,10 @@
 local ShotgunConstants = {
+    -- Shop Properties
+    PRICE = 500,
+    DISPLAY_NAME = "Combat Shotgun",
+    DESCRIPTION = "A powerful close-range weapon that fires multiple pellets in a spread pattern. Devastating at short range.",
+    IMAGE_ID = "rbxassetid://0", -- Placeholder image ID
+    
     -- Bullet Properties
     BULLET_SPEED = 100, -- studs per second
     BULLET_SIZE = Vector3.new(0.3, 0.3, 0.3),
@@ -6,9 +12,9 @@ local ShotgunConstants = {
     MAX_BULLET_DISTANCE = 1000, -- Maximum distance a bullet can travel before being removed
     
     -- Shot Properties
-    PELLETS_PER_SHOT = 8,
+    BULLETS_PER_SHOT = 8,
     SPREAD_ANGLE = math.rad(10), -- 15 degrees in radians
-    DAMAGE_PER_PELLET = 5,
+    DAMAGE_PER_BULLET = 5,
     
     -- Visual Effects
     MUZZLE_FLASH_DURATION = 0.1,

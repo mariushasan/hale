@@ -2,10 +2,12 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Leaderboard = require(game.ServerScriptService.Server.shared.Leaderboard)
 local Game = require(game.ServerScriptService.Server.features.game) -- Initialize the game
 local Weapons = require(game.ServerScriptService.Server.features.weapons)
+local Inventory = require(game.ServerScriptService.Server.features.inventory)
 local Players = game:GetService("Players")
 local TimeSync = require(game.ReplicatedStorage.shared.TimeSync)
 
 -- Initialize TimeSync on server
+Inventory.init()
 TimeSync.init()
 
 -- Create or get TimeSyncEvent for high-precision time synchronization
@@ -77,25 +79,19 @@ timeSyncEvent.OnServerEvent:Connect(function(player, requestType, data)
 end)
 
 -- Function to set player walk speed
-local function setPlayerSpeed(player)
+local function setPlayerSpeed(character)
 	local speed = 40 -- Adjust this value to change the run speed
-
-	-- Wait for the character to load
-	local character = player.Character or player.CharacterAdded:Wait()
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
-
+	
 	if humanoid then
 		humanoid.WalkSpeed = speed
 	end
 end
 
-local function setPlayerJumpHeight(player)
+local function setPlayerJumpHeight(character)
 	local jumpHeight = 40 -- Adjust this value to change the jump height
-
-	-- Wait for the character to load
-	local character = player.Character or player.CharacterAdded:Wait()
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
-
+	
 	if humanoid then
 		humanoid.UseJumpPower = true
 		humanoid.JumpPower = jumpHeight
@@ -106,9 +102,17 @@ local function setPlayerData(player)
 	Leaderboard.setStat(player, "Damage", 0)
 end
 
-Players.PlayerAdded:Connect(setPlayerSpeed)
-Players.PlayerAdded:Connect(setPlayerJumpHeight)
-Players.PlayerAdded:Connect(setPlayerData)
+-- Handle player joining and respawning
+Players.PlayerAdded:Connect(function(player)
+	-- Set up character spawning (both initial and respawns)
+	player.CharacterAdded:Connect(function(character)
+		setPlayerSpeed(character)
+		setPlayerJumpHeight(character)
+	end)
+	
+	-- Set leaderboard data (only needs to be done once per player)
+	setPlayerData(player)
+end)
 
 Game.init()
 Weapons.init()

@@ -4,7 +4,7 @@ local Shotgun = {}
 
 function Shotgun.generateBullets(startPosition, direction)
     local bullets = {}
-    for i = 1, ShotgunConstants.PELLETS_PER_SHOT do
+    for i = 1, ShotgunConstants.BULLETS_PER_SHOT do
         local bullet = {}
         local spreadX = (math.random() - 0.5) * 2 * ShotgunConstants.SPREAD_ANGLE
         local spreadY = (math.random() - 0.5) * 2 * ShotgunConstants.SPREAD_ANGLE
