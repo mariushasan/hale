@@ -5,24 +5,12 @@ local TimeSync = require(game.ReplicatedStorage.shared.TimeSync)
 local Leaderboard = require(game.ServerScriptService.Server.shared.Leaderboard)
 
 -- Import constants
-local WeaponsConstants = require(ReplicatedStorage.features.weapons.constants)
-local ShotgunConstants = require(ReplicatedStorage.features.weapons.shotgun.constants)
-local BossAttackConstants = require(ReplicatedStorage.features.weapons.bossattack.constants)
+local WeaponConstants = require(ReplicatedStorage.features.weapons)
 
 debugLog = require(game.ServerScriptService.Server.shared.DebugLog)
 -- Import server-side weapon modules
 local BossAttackModule = require(script.bossattack)
 local ShotgunModule = require(script.shotgun)
--- Get weapon constants based on weapon type
-local function getWeaponConstants(weaponType)
-    if weaponType == "shotgun" then
-        return ShotgunConstants
-    elseif weaponType == "bossattack" then
-        return BossAttackConstants
-    else
-        return WeaponsConstants -- fallback to default constants
-    end
-end
 
 -- Get server-side weapon module based on weapon type
 local function getWeaponModule(weaponType)
@@ -55,21 +43,6 @@ local playerPositionHistory = {} -- [userId] = {{time = timestamp, position = Ve
 local dummyPositionHistory = {} -- [dummyName] = {{time = timestamp, position = Vector3}, ...}
 local MAX_HISTORY_TIME_MS = 2000 -- Keep 2 seconds of history - enough for network latency
 
--- Create bullet data structure
-local function createBulletData(bulletId, shooter, weaponType, startPosition, spreadDirections)
-    local weaponConstants = getWeaponConstants(weaponType)
-    
-    return {
-        id = bulletId,
-        shooterId = shooter.UserId,
-        weaponType = weaponType,
-        currentPosition = startPosition,
-        spreadDirections = spreadDirections,
-        lastUpdateTime = TimeSync.getServerTimeMillis(),
-        startPosition = startPosition,
-    }
-end
-
 -- Remove bullet from tracking system
 local function removeBullet(bulletId, reason)
     if activeBullets[bulletId] then
@@ -90,7 +63,7 @@ local function updateBullets(deltaTime)
     for bulletId, bulletData in pairs(activeBullets) do
         local currentTime = TimeSync.getServerTimeMillis()
         local timeSinceLastUpdate = currentTime - bulletData.lastUpdateTime
-        local weaponConstants = getWeaponConstants(bulletData.weaponType)
+        local weaponConstants = WeaponConstants[bulletData.weaponType]
         
         -- Calculate new position
         local moveDistance = bulletData.speed * timeSinceLastUpdate
@@ -312,7 +285,7 @@ end
 -- Public function to equip a weapon for a player (handles both server logic and client notification)
 function weapons.equipPlayerWeapon(player, weaponType)
     -- Validate weapon type
-    if not WeaponsConstants.VALID_WEAPONS[weaponType] then
+    if not WeaponConstants[weaponType] then
         warn("Invalid weapon type for equipPlayerWeapon:", weaponType)
         return
     end
@@ -455,21 +428,23 @@ function weapons.init()
     end)
 
     -- Handle shooting with bullet tracking
-    ShootEvent.OnServerEvent:Connect(function(player, bulletId, startPosition, hitInfo, direction)
+    ShootEvent.OnServerEvent:Connect(function(shooter, hits)
         -- Get the player's selected weapon
-        local weaponType = playerWeapons[player.UserId]
-        local weaponConstants = getWeaponConstants(weaponType)
+        local weaponType = playerWeapons[shooter.UserId]
+        local weaponConstants = WeaponConstants[weaponType]
         local weaponModule = getWeaponModule(weaponType)
 
         -- Use hit information for lag compensation verification
         local serverTime = TimeSync.getServerTimeMillis()
         
-        print("SERVER: Processing hit from client")
-        print("Hit info:", hitInfo)
-        
-        if hitInfo and hitInfo.hitPart and hitInfo.hitPosition then
-            local hitPart = hitInfo.hitPart
-            local hitPosition = hitInfo.hitPosition
+        for _, hit in ipairs(hits) do
+            local hitPart = hit.hitPart
+            local hitPosition = hit.hitPosition
+
+            if not hitPart then
+                print("SERVER: Hit part is nil")
+                continue
+            end
             
             print("SERVER: Client claims to have hit:", hitPart.Name, "at:", hitPosition)
             
@@ -524,8 +499,8 @@ function weapons.init()
                     local humanoid = hitCharacter:FindFirstChildOfClass("Humanoid")
                     if humanoid then
                         humanoid:TakeDamage(damage)
-                        if player.Team.Name == "Other" then
-                            Leaderboard.addToStat(player, "Damage", 1)
+                        if shooter.Team.Name ~= "Waiting" then
+                            Leaderboard.addToStat(shooter, "Damage", 1)
                         end
                         print("SERVER: Damage applied to", hitCharacter.Name)
                     end
@@ -535,20 +510,29 @@ function weapons.init()
             else
                 print("SERVER: Hit part is not a character")
             end
-        else
-            print("SERVER: No hit information from client")
         end
 
-        local bulletData = createBulletData(bulletId, player, weaponType, startPosition, direction)
+        local createBulletData = {}
 
-        print("bulletData", bulletData)
+        for _, hit in ipairs(hits) do
+            local bullet = {
+                id = hit.id,
+                startPosition = hit.startPosition,
+                direction = hit.direction,
+                hitPosition = hit.hitPosition,
+            }
+            table.insert(createBulletData, bullet)
+        end
+
+        print("createBulletData", createBulletData)
 
         for _, player in ipairs(Players:GetPlayers()) do
-            print("player", player.UserId, bulletData.shooterId)
-            if player.UserId ~= bulletData.shooterId then
+            if player.UserId ~= shooter.UserId then
+                print("player", player.UserId)
                 ShootEvent:FireClient(player, {
                     action = "create",
-                    bulletData = bulletData
+                    weaponType = weaponType,
+                    bullets = createBulletData
                 })
             end
         end

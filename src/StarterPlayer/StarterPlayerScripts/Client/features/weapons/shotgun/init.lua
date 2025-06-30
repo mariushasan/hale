@@ -137,55 +137,20 @@ local function createBullet(startPosition, direction)
 end
 
 -- Create spread pattern for shotgun
-local function createSpreadPattern(direction, count)
-    local directions = {}
-    local baseDirection = direction.Unit
-    
-    for i = 1, count do
-        -- Create random spread within the cone
-        local spreadX = (math.random() - 0.5) * 2 * ShotgunConstants.SPREAD_ANGLE
-        local spreadY = (math.random() - 0.5) * 2 * ShotgunConstants.SPREAD_ANGLE
-        
-        -- Apply spread to direction
-        local spreadDirection = CFrame.fromOrientation(spreadX, spreadY, 0) * baseDirection
-        table.insert(directions, spreadDirection)
-    end
-    
-    return directions
-end
-
-function Shotgun.animateBullet(providedStartPosition, providedDirection)
-	-- Use provided parameters or fall back to camera
-	local camera = workspace.CurrentCamera
-	local startPosition = providedStartPosition or (camera.CFrame.Position + camera.CFrame.LookVector * 2)
-	local direction = providedDirection or camera.CFrame.LookVector
-	
+function Shotgun.createSpreadPattern(startPosition, direction)
 	local forwardVector = direction.Unit
 	local rightVector, upVector
-
-    print("providedDirection", providedDirection)
 	
-	if providedDirection then
-		-- For bullets from other players, calculate right/up vectors from the provided direction
-		-- Cross product with world up vector (0,1,0) to get right vector
-		rightVector = forwardVector:Cross(Vector3.new(0, 1, 0))
-
-        print("rightVector", rightVector)
-		
-		-- Cross product of right and forward to get up vector
-		upVector = rightVector:Cross(forwardVector).Unit
-
-        print("upVector", upVector)
-	else
-		-- For local player, use camera orientation for natural feel
-		rightVector = camera.CFrame.RightVector
-		upVector = camera.CFrame.UpVector
-	end
+    -- For bullets from other players, calculate right/up vectors from the provided direction
+    -- Cross product with world up vector (0,1,0) to get right vector
+    rightVector = forwardVector:Cross(Vector3.new(0, 1, 0))		
+    -- Cross product of right and forward to get up vector
+    upVector = rightVector:Cross(forwardVector).Unit
 	
 	local bullets = {}
 	
 	-- Create spread pattern using calculated orientation
-	local spreadDirections = {
+	local directions = {
 		forwardVector,                                           -- Center
 		forwardVector + rightVector * 0.1,                      -- Right
 		forwardVector - rightVector * 0.1,                      -- Left  
@@ -196,50 +161,50 @@ function Shotgun.animateBullet(providedStartPosition, providedDirection)
 		forwardVector + rightVector * 0.07 - upVector * 0.07,   -- Bottom-right
         forwardVector - rightVector * 0.07 - upVector * 0.07,   -- Bottom-left
 	}
-	
-	-- Create bullets for each direction
-	for i, spreadDirection in ipairs(spreadDirections) do
-		local bullet = createBullet(startPosition, spreadDirection)
-		
-		-- Store the initial CFrame rotation to avoid precision issues
-		local initialCFrame = CFrame.new(startPosition, startPosition + spreadDirection)
 
-		table.insert(bullets, {
-			part = bullet,
-			direction = spreadDirection.Unit,
-			startTime = tick(),
-			startPosition = startPosition,
-		})
-	end
+    for i, direction in ipairs(directions) do
+        local bullet = {
+            direction = direction,
+            startPosition = startPosition,
+        }
+        table.insert(bullets, bullet)
+    end
+    
+    return bullets
+end
+
+function Shotgun.animateBullet(startPosition, direction, maxDistance)
+	-- Create bullets for each direction
+    local bulletPart = createBullet(startPosition, direction)
+
+    local bullet = {
+        part = bulletPart,
+        direction = direction.Unit,
+        startTime = tick(),
+        startPosition = startPosition,
+    }
+    
+    -- Store the initial CFrame rotation to avoid precision issues
+    local initialCFrame = CFrame.new(bullet.startPosition, bullet.startPosition + bullet.direction)
 	
 	-- Return update function for all bullets
 	return function(deltaTime)
 		local currentTime = tick()
-		
-		for i = #bullets, 1, -1 do
-			local bulletData = bullets[i]
-			
-			-- Check if bullet still exists
-			if bulletData.part and bulletData.part.Parent then
-				local elapsedTime = currentTime - bulletData.startTime
-				local distance = ShotgunConstants.BULLET_SPEED * elapsedTime
-				
-				-- Move bullet
-				local newPosition = bulletData.startPosition + (bulletData.direction * distance)
-				bulletData.part.Position = newPosition
-				-- Remove bullet if it has traveled too far
-				if distance > ShotgunConstants.MAX_BULLET_DISTANCE then
-					bulletData.part:Destroy()
-					table.remove(bullets, i)
-				end
-			else
-				-- Bullet was destroyed externally, remove from tracking
-				table.remove(bullets, i)
-			end
-		end
-		
-		-- Return true if there are still bullets to update
-		return #bullets > 0
+        
+        -- Check if bullet still exists
+        local elapsedTime = currentTime - bullet.startTime
+        local distance = ShotgunConstants.BULLET_SPEED * elapsedTime
+        
+        -- Move bullet
+        local newPosition = bullet.startPosition + (bullet.direction * distance)
+        bullet.part.Position = newPosition
+        -- Remove bullet if it has traveled too far
+        if distance > maxDistance then
+            bullet.part:Destroy()
+            return false
+        end
+
+        return true
 	end
 end
 
@@ -292,7 +257,7 @@ function Shotgun.unequip()
     end
 end
 
-function Shotgun.fire(startPosition, direction)    
+function Shotgun.animateFire()    
     -- Play the fire animation if it exists
     if currentFireAnimationTrack then
         currentFireAnimationTrack:Play()

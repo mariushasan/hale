@@ -1,5 +1,7 @@
 local ShotgunConstants = {
     -- Shop Properties
+    SHOP = true,
+    ID = "shotgun",
     PRICE = 500,
     DISPLAY_NAME = "Combat Shotgun",
     DESCRIPTION = "A powerful close-range weapon that fires multiple pellets in a spread pattern. Devastating at short range.",

@@ -1,5 +1,7 @@
 local BossAttackConstants = {
     -- Attack Properties
+    SHOP = false,
+    ID = "bossattack",
     DAMAGE = 75,
     RANGE = 15, -- This will be the MAX_BULLET_DISTANCE for boss attack
     COOLDOWN = 2, -- seconds

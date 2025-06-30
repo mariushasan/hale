@@ -4,13 +4,14 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local StarterGui = game:GetService("StarterGui")
 
 -- Import weapon constants for shop data
-local ShotgunConstants = require(ReplicatedStorage.features.weapons.shotgun.constants)
+local WeaponConstants = require(ReplicatedStorage.features.weapons)
 
 -- Import inventory system
 local Inventory = require(game.StarterPlayer.StarterPlayerScripts.Client.features.inventory)
 
 local Shop = {}
 local shopGui = nil
+local shopIconGui = nil -- For the persistent shop icon
 local currentPage = "grid" -- "grid" or "details"
 local backButton = nil
 
@@ -25,15 +26,6 @@ local purchaseResponseCallback = nil
 
 -- Store size change connections
 local sizeConnections = {}
-
--- Shop data - only purchaseable weapons
-local SHOP_WEAPONS = {
-    {
-        id = "shotgun",
-        constants = ShotgunConstants
-    }
-    -- Add more weapons here as they become purchaseable
-}
 
 -- Create the main shop GUI
 local function createShopGui()
@@ -227,19 +219,22 @@ local function createWeaponGrid(parent)
         padding.Parent = containerFrame
         
         -- Update scroll canvas size based on actual content
-        local totalRows = math.ceil(#SHOP_WEAPONS / maxColumns)
+        local totalRows = math.max(1, math.ceil(#WeaponConstants - 1 / maxColumns))
         local totalHeight = totalRows * 280 + (totalRows - 1) * cardSpacing + 40 -- Cards + spacing + padding
         scrollFrame.CanvasSize = UDim2.new(0, 0, 0, totalHeight)
     end
     
     -- Create weapon cards
-    for i, weaponData in ipairs(SHOP_WEAPONS) do
-        local constants = weaponData.constants
-        local isOwned = Inventory.ownsItem(weaponData.id)
+    for i, constants in pairs(WeaponConstants) do
+        if not constants.SHOP then
+            continue
+        end
+
+        local isOwned = Inventory.ownsItem(constants.ID)
         
         -- Weapon card frame with color coding for ownership
         local card = Instance.new("Frame")
-        card.Name = weaponData.id .. "Card"
+        card.Name = constants.ID .. "Card"
         card.Size = UDim2.new(0, 200, 0, 280)
         card.BackgroundColor3 = isOwned and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(80, 40, 40)
         card.BorderSizePixel = 0
@@ -256,7 +251,7 @@ local function createWeaponGrid(parent)
         nameLabel.Size = UDim2.new(1, -20, 0, 30)
         nameLabel.Position = UDim2.new(0, 10, 0, 10)
         nameLabel.BackgroundTransparency = 1
-        nameLabel.Text = constants.DISPLAY_NAME or weaponData.id
+        nameLabel.Text = constants.DISPLAY_NAME or constants.ID
         nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
         nameLabel.TextScaled = true
         nameLabel.Font = Enum.Font.GothamBold
@@ -324,7 +319,7 @@ local function createWeaponGrid(parent)
         
         -- Click to view details
         clickButton.MouseButton1Click:Connect(function()
-            Shop.showWeaponDetails(weaponData)
+            Shop.showWeaponDetails(constants)
         end)
     end
     
@@ -341,7 +336,7 @@ local function createWeaponGrid(parent)
 end
 
 -- Create weapon details page
-local function createWeaponDetails(parent, weaponData)
+local function createWeaponDetails(parent, constants)
     -- Clear existing content (but preserve header)
     for _, child in pairs(parent:GetChildren()) do
         if child.Name ~= "Header" then
@@ -349,8 +344,7 @@ local function createWeaponDetails(parent, weaponData)
         end
     end
     
-    local constants = weaponData.constants
-    local isOwned = Inventory.ownsItem(weaponData.id)
+    local isOwned = Inventory.ownsItem(constants.ID)
     
     -- Create scrollable container (directly in MainFrame)
     local scrollFrame = Instance.new("ScrollingFrame")
@@ -433,7 +427,7 @@ local function createWeaponDetails(parent, weaponData)
         nameLabel.Name = "WeaponName"
         nameLabel.Size = UDim2.new(1, 0, 0, 35)
         nameLabel.BackgroundTransparency = 1
-        nameLabel.Text = constants.DISPLAY_NAME or weaponData.id
+        nameLabel.Text = constants.DISPLAY_NAME or constants.ID
         nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
         nameLabel.TextScaled = true
         nameLabel.Font = Enum.Font.GothamBold
@@ -563,7 +557,7 @@ local function createWeaponDetails(parent, weaponData)
             purchaseButton.MouseButton1Click:Connect(function()
                 purchaseButton.Text = "PURCHASING..."
                 purchaseButton.Active = false
-                Inventory.purchaseItem(weaponData.id)
+                Inventory.purchaseItem(constants.ID)
             end)
         end
         
@@ -657,6 +651,15 @@ function Shop.show()
     hideDefaultGuis() -- Hide chat and leaderboard when shop opens
 end
 
+-- Function to restore chat and leaderboard
+local function showDefaultGuis()
+    -- Restore original states
+    pcall(function()
+        StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Chat, originalChatEnabled)
+        StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.PlayerList, originalLeaderboardEnabled)
+    end)
+end
+
 function Shop.hide()
     if shopGui then
         shopGui.Enabled = false
@@ -701,7 +704,7 @@ function Shop.showWeaponGrid()
     end
 end
 
-function Shop.showWeaponDetails(weaponData)
+function Shop.showWeaponDetails(constants)
     if shopGui then
         currentPage = "details"
         local mainFrame = shopGui.MainFrame
@@ -712,7 +715,7 @@ function Shop.showWeaponDetails(weaponData)
         local coinLabel = mainFrame.Header.CoinFrame.CoinLabel
         coinLabel.Text = "💰 " .. Inventory.getCoins()
         
-        createWeaponDetails(mainFrame, weaponData)
+        createWeaponDetails(mainFrame, constants)
     end
 end
 
@@ -724,13 +727,90 @@ function Shop.toggle()
     end
 end
 
--- Function to restore chat and leaderboard
-local function showDefaultGuis()
-    -- Restore original states
-    pcall(function()
-        StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Chat, originalChatEnabled)
-        StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.PlayerList, originalLeaderboardEnabled)
+-- Create persistent shop icon
+local function createShopIcon()
+    local player = Players.LocalPlayer
+    local playerGui = player:WaitForChild("PlayerGui")
+    
+    -- Remove existing shop icon if it exists
+    local existingIcon = playerGui:FindFirstChild("ShopIconGui")
+    if existingIcon then
+        existingIcon:Destroy()
+    end
+    
+    -- Create ScreenGui for the shop icon
+    local iconGui = Instance.new("ScreenGui")
+    iconGui.Name = "ShopIconGui"
+    iconGui.ResetOnSpawn = false
+    iconGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    iconGui.DisplayOrder = 50 -- Lower than shop GUI but above default UI
+    iconGui.Parent = playerGui
+    
+    -- Create the shop icon button
+    local shopIcon = Instance.new("TextButton")
+    shopIcon.Name = "ShopIcon"
+    shopIcon.Size = UDim2.new(0, 60, 0, 60) -- Round 60x60 button
+    shopIcon.Position = UDim2.new(0, 20, 1, -80) -- Bottom-left corner with padding
+    shopIcon.AnchorPoint = Vector2.new(0, 0)
+    shopIcon.BackgroundColor3 = Color3.fromRGB(45, 45, 50) -- Dark theme to match shop
+    shopIcon.BorderSizePixel = 0
+    shopIcon.Text = "⚔️" -- Crossed swords emoji for weapon shop
+    shopIcon.TextColor3 = Color3.fromRGB(255, 215, 0) -- Gold text
+    shopIcon.TextScaled = true
+    shopIcon.Font = Enum.Font.GothamBold
+    shopIcon.Parent = iconGui
+    
+    -- Make it perfectly round
+    local iconCorner = Instance.new("UICorner")
+    iconCorner.CornerRadius = UDim.new(0.5, 0) -- 50% radius makes it circular
+    iconCorner.Parent = shopIcon
+    
+    -- Add subtle shadow/border effect
+    local iconStroke = Instance.new("UIStroke")
+    iconStroke.Color = Color3.fromRGB(255, 215, 0) -- Gold border
+    iconStroke.Thickness = 2
+    iconStroke.Parent = shopIcon
+    
+    -- Add hover effects
+    shopIcon.MouseEnter:Connect(function()
+        local tween = TweenService:Create(shopIcon, TweenInfo.new(0.2), {
+            Size = UDim2.new(0, 65, 0, 65),
+            BackgroundColor3 = Color3.fromRGB(55, 55, 60)
+        })
+        tween:Play()
+        
+        -- Animate the border
+        local strokeTween = TweenService:Create(iconStroke, TweenInfo.new(0.2), {
+            Thickness = 3
+        })
+        strokeTween:Play()
     end)
+    
+    shopIcon.MouseLeave:Connect(function()
+        local tween = TweenService:Create(shopIcon, TweenInfo.new(0.2), {
+            Size = UDim2.new(0, 60, 0, 60),
+            BackgroundColor3 = Color3.fromRGB(45, 45, 50)
+        })
+        tween:Play()
+        
+        -- Animate the border back
+        local strokeTween = TweenService:Create(iconStroke, TweenInfo.new(0.2), {
+            Thickness = 2
+        })
+        strokeTween:Play()
+    end)
+    
+    -- Connect click to toggle shop (open/close)
+    shopIcon.MouseButton1Click:Connect(function()
+        Shop.toggle()
+    end)
+    
+    return iconGui
+end
+
+-- Initialize the shop icon when module loads
+function Shop.init()
+    shopIconGui = createShopIcon()
 end
 
 return Shop 

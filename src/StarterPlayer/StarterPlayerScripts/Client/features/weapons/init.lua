@@ -3,20 +3,16 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
-local TimeSync = require(game.ReplicatedStorage.shared.TimeSync)
 local shootEvent = ReplicatedStorage:WaitForChild("ShootEvent")
 local weaponSelectionEvent = ReplicatedStorage:WaitForChild("WeaponSelectionEvent")
 
 local Shotgun = require(script.shotgun)
 local BossAttack = require(script.bossattack)
 local WeaponSelector = require(script.ui.WeaponSelector)
-local ShotgunConstants = require(ReplicatedStorage.features.weapons.shotgun.constants)
-local BossAttackConstants = require(ReplicatedStorage.features.weapons.bossattack.constants)
-local WeaponsConstants = require(ReplicatedStorage.features.weapons.constants)
+local WeaponConstants = require(ReplicatedStorage.features.weapons)
 
 local Weapons = {
 	currentWeapon = nil,
-	currentWeaponType = nil,
 	availableWeapons = {
 		shotgun = Shotgun,
 		bossattack = BossAttack
@@ -24,14 +20,108 @@ local Weapons = {
 	activeBullets = {}, -- Table to store active bullet animations
 	lastFireTime = 0,
 	bulletCounter = 0,
-	isBoss = false, -- Track boss status
 	crosshair = nil -- Store crosshair UI
 }
 
--- Simple crosshair creation without animations (fallback)
-local function createSimpleCrosshair()
-	print("Creating simple crosshair (fallback)") -- Debug print
+-- Damage animation system
+local function createDamageGui()
+	local player = Players.LocalPlayer
+	local playerGui = player:WaitForChild("PlayerGui")
 	
+	-- Create or get existing damage GUI
+	local damageGui = playerGui:FindFirstChild("DamageGui")
+	if not damageGui then
+		damageGui = Instance.new("ScreenGui")
+		damageGui.Name = "DamageGui"
+		damageGui.ResetOnSpawn = false
+		damageGui.IgnoreGuiInset = true
+		damageGui.Parent = playerGui
+	end
+	
+	return damageGui
+end
+
+local function showDamageNumber(totalDamage, hitPosition)
+	local damageGui = createDamageGui()
+	local camera = workspace.CurrentCamera
+	
+	-- Convert 3D position to screen position
+	local screenPosition, onScreen = camera:WorldToScreenPoint(hitPosition)
+	
+	if not onScreen then
+		-- If hit position is off-screen, show damage near crosshair
+		screenPosition = Vector3.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2, 0)
+	end
+	
+	-- Create damage label
+	local damageLabel = Instance.new("TextLabel")
+	damageLabel.Name = "DamageNumber"
+	damageLabel.Size = UDim2.new(0, 100, 0, 40)
+	damageLabel.Position = UDim2.new(0, screenPosition.X - 50, 0, screenPosition.Y - 20)
+	damageLabel.BackgroundTransparency = 1
+	damageLabel.Text = "-" .. totalDamage
+	damageLabel.TextColor3 = Color3.fromRGB(255, 100, 100) -- Red damage color
+	damageLabel.TextScaled = true
+	damageLabel.Font = Enum.Font.GothamBold
+	damageLabel.TextStrokeTransparency = 0
+	damageLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+	damageLabel.ZIndex = 1000
+	damageLabel.Parent = damageGui
+	
+	-- Add text size constraint for better readability
+	local textSizeConstraint = Instance.new("UITextSizeConstraint")
+	textSizeConstraint.MaxTextSize = 36
+	textSizeConstraint.MinTextSize = 18
+	textSizeConstraint.Parent = damageLabel
+	
+	-- Animate the damage number
+	local startScale = 0.5
+	local peakScale = 1.2
+	local endScale = 0.8
+	
+	-- Initial scale
+	damageLabel.Size = UDim2.new(0, 100 * startScale, 0, 40 * startScale)
+	
+	-- Create animation sequence
+	local scaleUpTween = TweenService:Create(damageLabel, 
+		TweenInfo.new(0.15, Enum.EasingStyle.Back, Enum.EasingDirection.Out), 
+		{
+			Size = UDim2.new(0, 100 * peakScale, 0, 40 * peakScale),
+			Position = UDim2.new(0, screenPosition.X - 50 * peakScale, 0, screenPosition.Y - 20 * peakScale - 20)
+		}
+	)
+	
+	local fadeOutTween = TweenService:Create(damageLabel,
+		TweenInfo.new(0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{
+			Size = UDim2.new(0, 100 * endScale, 0, 40 * endScale),
+			Position = UDim2.new(0, screenPosition.X - 50 * endScale, 0, screenPosition.Y - 20 * endScale - 60),
+			TextTransparency = 1,
+			TextStrokeTransparency = 1
+		}
+	)
+	
+	-- Play animations in sequence
+	scaleUpTween:Play()
+	scaleUpTween.Completed:Connect(function()
+		fadeOutTween:Play()
+		fadeOutTween.Completed:Connect(function()
+			damageLabel:Destroy()
+		end)
+	end)
+	
+	-- Add some random horizontal drift for variety
+	local driftTween = TweenService:Create(damageLabel,
+		TweenInfo.new(0.95, Enum.EasingStyle.Sine, Enum.EasingDirection.Out),
+		{
+			Position = UDim2.new(0, screenPosition.X - 50 + math.random(-30, 30), 0, screenPosition.Y - 80)
+		}
+	)
+	driftTween:Play()
+end
+
+-- Simple crosshair creation without animations (fallback)
+local function createSimpleCrosshair()	
 	local player = Players.LocalPlayer
 	local playerGui = player:WaitForChild("PlayerGui")
 	
@@ -79,75 +169,7 @@ local function createSimpleCrosshair()
 		outline.Parent = line
 	end
 	
-	print("Simple crosshair created successfully") -- Debug print
 	return crosshairGui
-end
-
--- Show crosshair with fade-in effect
-local function showCrosshair()
-	print("showCrosshair() called") -- Debug print
-	
-	-- Try simple crosshair first for debugging
-	if not Weapons.crosshair then
-		print("Creating new crosshair") -- Debug print
-		Weapons.crosshair = createSimpleCrosshair() -- Use simple version for now
-	end
-	
-	-- Make sure it's visible
-	local crosshairFrame = Weapons.crosshair:FindFirstChild("SimpleCrosshair")
-	if crosshairFrame then
-		print("Simple crosshair frame found, ensuring visibility") -- Debug print
-		crosshairFrame.Visible = true
-	else
-		print("ERROR: Simple crosshair frame not found!") -- Debug print
-	end
-end
-
--- Hide crosshair with fade-out effect
-local function hideCrosshair()
-	print("hideCrosshair() called") -- Debug print
-	
-	if Weapons.crosshair then
-		local crosshairFrame = Weapons.crosshair:FindFirstChild("Crosshair")
-		if crosshairFrame then
-			print("Hiding crosshair frame") -- Debug print
-			
-			-- Tween to invisible
-			for _, line in pairs(crosshairFrame:GetChildren()) do
-				if line:IsA("Frame") then
-					local tween = TweenService:Create(line, TweenInfo.new(0.2), {BackgroundTransparency = 1})
-					tween:Play()
-				end
-			end
-			
-			-- Hide after animation completes (using spawn to avoid yielding)
-			task.spawn(function()
-				task.wait(0.25)
-				if crosshairFrame then
-					crosshairFrame.Visible = false
-				end
-			end)
-		end
-	end
-end
-
--- Cleanup crosshair
-local function cleanupCrosshair()
-	if Weapons.crosshair then
-		Weapons.crosshair:Destroy()
-		Weapons.crosshair = nil
-	end
-end
-
--- Get weapon constants based on weapon type
-local function getWeaponConstants(weaponType)
-	if weaponType == "shotgun" then
-		return ShotgunConstants
-	elseif weaponType == "bossattack" then
-		return BossAttackConstants
-	else
-		return WeaponsConstants -- fallback to default constants
-	end
 end
 
 -- Generate unique bullet ID on client
@@ -171,22 +193,6 @@ RunService.Heartbeat:Connect(updateBullets)
 
 -- Handle weapon selection events from server or local UI
 weaponSelectionEvent.OnClientEvent:Connect(function(weaponType)
-	print("Server requested weapon change to:", weaponType)
-	Weapons.isBoss = weaponType == "bossattack"
-	
-	if Weapons.isBoss then
-		-- Player became boss - equip boss attack weapon
-		print("You are now the BOSS! Left-click to perform melee attacks!")
-	else
-		-- Player is no longer boss or switched to different weapon
-		if weaponType == "shotgun" then
-			print("Equipped shotgun weapon.")
-		else
-			print("Equipped weapon:", weaponType)
-		end
-	end
-	
-	-- Equip the requested weapon
 	Weapons.equip(weaponType)
 end)
 
@@ -195,12 +201,16 @@ function Weapons.init()
 	WeaponSelector.init(Weapons)
 	
 	-- Equip default weapon
-	Weapons.equip("shotgun", false)
+	local currentWeaponType = Weapons.currentWeapon or "shotgun"
+	Weapons.equip(currentWeaponType, true)
 	
 	-- Handle character respawning - cleanup crosshair
 	local player = Players.LocalPlayer
 	player.CharacterRemoving:Connect(function()
-		cleanupCrosshair()
+		if Weapons.crosshair then
+			Weapons.crosshair:Destroy()
+			Weapons.crosshair = nil
+		end
 	end)
 	
 	player.CharacterAdded:Connect(function()
@@ -227,136 +237,139 @@ function Weapons.init()
 
 	-- Handle incoming bullet events from server
 	shootEvent.OnClientEvent:Connect(function(data)
-		if data.action == "create" and data.bulletData then
-			local bulletData = data.bulletData
-			-- Fire using the actual shooter's weapon type, position, direction, and spread directions
+		print("data", data)
+		if data.action == "create" then
 			Weapons.fire(
-				bulletData.id,
-				bulletData.weaponType,
-				bulletData.currentPosition,
-				bulletData.direction,
-				bulletData.spreadDirections
+				data.weaponType,
+				data.bullets
 			)
-		elseif data.action == "destroy" and data.bulletId then
-			-- Remove the bullet from active bullets
-			Weapons.removeBullet(data.bulletId)
+		elseif data.action == "destroy" then
+			Weapons.activeBullets[bulletId] = nil
 		end
 	end)
 end
 
 function Weapons.handleFire()
-	if not Weapons.currentWeapon or not Weapons.currentWeaponType then
+	if not Weapons.currentWeapon then
 		return
 	end
-	
-	local weaponConstants = getWeaponConstants(Weapons.currentWeaponType)
+	local weaponConstants = WeaponConstants[Weapons.currentWeapon]
+	local weapon = Weapons.availableWeapons[Weapons.currentWeapon]
 	local currentTime = tick()
 	local fireRate = weaponConstants.FIRE_COOLDOWN or weaponConstants.COOLDOWN or 0.5
 	
 	if currentTime - Weapons.lastFireTime >= fireRate then
 		Weapons.lastFireTime = currentTime
-		
 		-- Calculate local firing parameters
 		local camera = workspace.CurrentCamera
 		if camera then
 			local direction = camera.CFrame.LookVector
 			local startPosition = camera.CFrame.Position + direction * 2
-			local bulletId = generateBulletId()
-			Weapons.fire(bulletId, Weapons.currentWeaponType, startPosition, direction)
+			local directions = weapon.createSpreadPattern(startPosition, direction)
+			for _, direction in ipairs(directions) do
+				direction["id"] = generateBulletId()
+			end
+			Weapons.fire(Weapons.currentWeapon, directions)
 		end
 	end
 end
 
-function Weapons.equip(weaponType, notifyServer)
-	print("Weapons.equip() called with weaponType:", weaponType) -- Debug print
-	
+function Weapons.equip(weaponType, notifyServer)	
 	-- Unequip current weapon if any
 	if Weapons.currentWeapon then
-		Weapons.currentWeapon.unequip()
+		Weapons.availableWeapons[Weapons.currentWeapon].unequip()
 	end
 
 	-- Equip new weapon
 	local weapon = Weapons.availableWeapons[weaponType]
-	if weapon then
-		print("Weapon found, equipping:", weaponType) -- Debug print
-		Weapons.currentWeapon = weapon
-		Weapons.currentWeaponType = weaponType
-		weapon.equip()
-		
-		-- Show crosshair when weapon is equipped
-		print("About to show crosshair") -- Debug print
-		showCrosshair()
-		
-		-- Notify server of weapon change if requested (for UI-initiated changes)
-		if notifyServer then
-			weaponSelectionEvent:FireServer(weaponType)
-		end
-	else
-		print("ERROR: Weapon not found:", weaponType) -- Debug print
+
+	if not weapon then
+		print("Weapon not found:", weaponType)
+		return
+	end
+	
+	weapon.equip()
+	Weapons.currentWeapon = weaponType
+	
+	if not weapon.hideCrosshair then
+		Weapons.crosshair = createSimpleCrosshair()
+	end
+	
+	if notifyServer then
+		weaponSelectionEvent:FireServer(weaponType)
 	end
 end
 
--- Function for UI-initiated weapon changes (notifies server)
-function Weapons.equipLocal(weaponType)
-	Weapons.equip(weaponType, true)
-end
-
-function Weapons.unequip()
-	if Weapons.currentWeapon then
-		Weapons.currentWeapon.unequip()
-		Weapons.currentWeapon = nil
-		Weapons.currentWeaponType = nil
-		
-		-- Hide crosshair when weapon is unequipped
-		hideCrosshair()
-	end
-end
-
-function Weapons.fire(bulletId, weaponType, startPosition, direction)
+function Weapons.fire(weaponType, bullets)
 	local weapon = Weapons.availableWeapons[weaponType]
+	local weaponConstants = WeaponConstants[weaponType]
 	if weapon then
 		-- Get the animation function for the bullets
-		local updateBullet = weapon.animateBullet(startPosition, direction)
-		
-		if bulletId then
-			Weapons.activeBullets[bulletId] = {
-				update = updateBullet
-			}
+		local hits = {}
+		for _, bullet in ipairs(bullets) do			
+			-- Check if this is a local firing (bullet ID starts with local player's name)
+			local player = Players.LocalPlayer
+			if bullet.id and bullet.id:find("^" .. player.Name .. "_") then
+				-- Perform client-side raycast to detect what we hit
+				local camera = workspace.CurrentCamera
+				local raycastParams = RaycastParams.new()
+				raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+				raycastParams.FilterDescendantsInstances = {player.Character}
+				
+				-- Raycast in the direction we're shooting
+				local raycastDistance = 1000 -- Max shooting distance
+				local raycastResult = workspace:Raycast(bullet.startPosition, bullet.direction * raycastDistance, raycastParams)
+				local hitPart = nil
+				local hitPosition = nil
+				
+				if raycastResult and raycastResult.Instance.Parent:FindFirstChildOfClass("Humanoid") then
+					hitPart = raycastResult.Instance
+					hitPosition = raycastResult.Position
+				end
+				
+				table.insert(hits, {
+					id = bullet.id,
+					direction = bullet.direction,
+					startPosition = bullet.startPosition,
+					hitPart = hitPart,
+					hitPosition = hitPosition
+				})
+				local maxDistance = weaponConstants.MAX_BULLET_DISTANCE
+				local hitVector = hitPosition and hitPosition - bullet.startPosition
+				if hitVector then
+					maxDistance = hitVector.Magnitude
+				end
+
+				local updateBullet = weapon.animateBullet(bullet.startPosition, bullet.direction, maxDistance)
+				if updateBullet then
+					Weapons.activeBullets[bullet.id] = {
+						update = updateBullet
+					}
+				end
+			end
 		end
-		
-		-- Check if this is a local firing (bullet ID starts with local player's name)
-		local player = Players.LocalPlayer
-		if bulletId and bulletId:find("^" .. player.Name .. "_") then
-			-- Perform client-side raycast to detect what we hit
-			local camera = workspace.CurrentCamera
-			local raycastParams = RaycastParams.new()
-			raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
-			raycastParams.FilterDescendantsInstances = {player.Character}
+
+		if #hits > 0 then
+			-- Find the average hit position for damage display
+			local avgHitPosition = Vector3.new(0, 0, 0)
+			local validHits = 0
+			for _, hit in ipairs(hits) do
+				if hit.hitPosition then
+					avgHitPosition = avgHitPosition + hit.hitPosition
+					validHits = validHits + 1
+				end
+			end
+
+			totalDamage = validHits * weaponConstants.DAMAGE_PER_BULLET
 			
-			-- Raycast in the direction we're shooting
-			local raycastDistance = 1000 -- Max shooting distance
-			local raycastResult = workspace:Raycast(startPosition, direction * raycastDistance, raycastParams)
-			
-			local hitPart = nil
-			local hitPosition = nil
-			
-			if raycastResult then
-				hitPart = raycastResult.Instance
-				hitPosition = raycastResult.Position
+			if validHits > 0 then
+				avgHitPosition = avgHitPosition / validHits
+				showDamageNumber(totalDamage, avgHitPosition)
 			end
 			
-			-- Send shoot event to server with hit information instead of reference position
-			shootEvent:FireServer(bulletId, startPosition, {hitPart = hitPart, hitPosition = hitPosition}, direction)
-			
-			-- Then play weapon effects (animations, sounds, etc.)
-			weapon.fire(startPosition, direction)
+			shootEvent:FireServer(hits)
 		end
 	end
-end
-
--- Function to remove a bullet animation
-function Weapons.removeBullet(bulletId)
-	Weapons.activeBullets[bulletId] = nil
 end
 
 return Weapons

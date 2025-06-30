@@ -37,7 +37,7 @@ local InventoryEvent = ReplicatedStorage:WaitForChild("InventoryEvent")
 local PurchaseEvent = ReplicatedStorage:WaitForChild("PurchaseEvent")
 
 -- Import weapon constants for pricing
-local ShotgunConstants = require(ReplicatedStorage.features.weapons.shotgun.constants)
+local WeaponConstants = require(ReplicatedStorage.features.weapons)
 
 local Inventory = {}
 
@@ -48,8 +48,8 @@ local playerData = {}
 local SHOP_ITEMS = {
     shotgun = {
         id = "shotgun",
-        price = ShotgunConstants.PRICE,
-        name = ShotgunConstants.DISPLAY_NAME,
+        price = WeaponConstants.shotgun.PRICE,
+        name = WeaponConstants.shotgun.DISPLAY_NAME,
         category = "weapon"
     }
     -- Add more items here as they become available

@@ -7,6 +7,7 @@ local UserInputService = game:GetService("UserInputService")
 local WeaponSelector = require(game.StarterPlayer.StarterPlayerScripts.Client.features.weapons.ui.WeaponSelector)
 local LogViewer = require(game.StarterPlayer.StarterPlayerScripts.Client.LogViewer)
 -- Initialize time synchronization first
+Shop.init()
 TimeSync.init()
 Weapons.init()
 Game.init()
