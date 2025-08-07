@@ -20,6 +20,12 @@ local WEAPONS = {
         description = "Devastating close-range weapon with spread",
         icon = "rbxassetid://4483345998", -- Default shotgun icon
         weaponType = "shotgun"
+    },
+    {
+        name = "Assault Rifle",
+        description = "High-fire rate assault rifle with moderate damage",
+        icon = "rbxassetid://4483345998", -- Default assault rifle icon
+        weaponType = "assaultrifle"
     }
 }
 
@@ -137,7 +143,7 @@ local function createWeaponSelector()
             WeaponSelector.hide()
             
             -- Equip weapon locally and notify server
-            weaponsModule.equipLocal(weapon.weaponType)
+            weaponsModule.equip(weapon.weaponType, true)
         end)
         
         weaponButton.Parent = weaponList

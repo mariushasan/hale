@@ -1,8 +1,10 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local PathfindingService = game:GetService("PathfindingService")
-local TimeSync = require(game.ReplicatedStorage.shared.TimeSync)
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local PhysicsService = game:GetService("PhysicsService")
+
+local PLAYER_CHARACTERS_GROUP = "PlayerCharacters"  -- must match weapons.init
 
 local debugLogEvent = ReplicatedStorage:FindFirstChild("DebugLogEvent")
 if not debugLogEvent then
@@ -27,7 +29,8 @@ local DummySystem = {}
 
 -- Dummy configuration
 local DUMMY_COUNT = 3
-local DUMMY_SPAWN_POSITIONS = {
+-- Relative positions from TeleportArena center
+local DUMMY_RELATIVE_POSITIONS = {
     Vector3.new(0, 5, -20),
     Vector3.new(20, 5, -20),
     Vector3.new(-20, 5, -20)
@@ -37,6 +40,27 @@ local DUMMY_NAMES = {"TestDummy1", "TestDummy2", "TestDummy3"}
 -- Store dummy data for lag compensation
 local dummyData = {}
 local dummyPositionHistory = {}
+
+-- Get TeleportArena reference
+local function getTeleportArena()
+    local arena = workspace:FindFirstChild("TeleportArena")
+    if not arena then
+        warn("TeleportArena not found in workspace! Dummies will spawn at origin.")
+        return nil
+    end
+    return arena
+end
+
+-- Calculate world position relative to TeleportArena
+local function getWorldPosition(relativePosition)
+    local arena = getTeleportArena()
+    if arena then
+        return arena.Position + relativePosition
+    else
+        -- Fallback to world origin if arena not found
+        return relativePosition
+    end
+end
 
 -- Create a basic dummy character
 local function createDummy(name, spawnPosition)
@@ -284,6 +308,14 @@ local function createDummy(name, spawnPosition)
     rightLowerLeg:SetNetworkOwner(nil)
     rightFoot:SetNetworkOwner(nil)
     
+    -- At the very end of createDummy after joints setup, assign collision group
+    -- Set collision group so server-side projectiles ignore live dummies
+    for _, part in ipairs(dummy:GetDescendants()) do
+        if part:IsA("BasePart") then
+            part.CollisionGroup = PLAYER_CHARACTERS_GROUP
+        end
+    end
+
     return dummy
 end
 
@@ -291,7 +323,7 @@ end
 local function recordDummyPosition(dummy)
     if not dummy or not dummy.PrimaryPart then return end
     
-    local currentTime = TimeSync.getServerTimeMillis()  -- Use TimeSync instead of tick()
+    local currentTime = DateTime.now().UnixTimestampMillis
     local position = dummy.PrimaryPart.Position
     
     local dummyName = dummy.Name
@@ -356,7 +388,7 @@ local function startDummyAI(dummy)
             wait(0.1)
             
             -- Jump more frequently - 20% chance every 2+ seconds
-            local currentTime = TimeSync.getServerTimeMillis()
+            local currentTime = DateTime.now().UnixTimestampMillis
             if currentTime - lastJump > 2000 and math.random() < 0.2 then
                 humanoid.Jump = true
                 lastJump = currentTime
@@ -364,12 +396,17 @@ local function startDummyAI(dummy)
             
             -- Update movement target every 8-15 seconds (longer movements)
             if currentTime - lastTargetUpdate > math.random(8000, 15000) then
-                -- Create more varied movement patterns
+                -- Create more varied movement patterns relative to TeleportArena
+                local arena = getTeleportArena()
+                local arenaPosition = arena and arena.Position or Vector3.new(0, 0, 0)
+                
                 local movementDistance = math.random(30, 80) -- Larger movement range
                 local angle = math.random() * 2 * math.pi -- Random direction
                 local randomX = math.cos(angle) * movementDistance
                 local randomZ = math.sin(angle) * movementDistance
-                currentTarget = Vector3.new(randomX, 0, randomZ)
+                
+                -- Target position relative to arena
+                currentTarget = arenaPosition + Vector3.new(randomX, 0, randomZ)
                 lastTargetUpdate = currentTime
                 
                 if dummy.PrimaryPart then
@@ -381,7 +418,7 @@ local function startDummyAI(dummy)
 end
 
 -- Respawn dummy on death
-local function setupDummyRespawn(dummy, spawnPosition, dummyIndex)
+local function setupDummyRespawn(dummy, dummyIndex)
     local humanoid = dummy:FindFirstChildOfClass("Humanoid")
     if not humanoid then return end
     
@@ -391,13 +428,16 @@ local function setupDummyRespawn(dummy, spawnPosition, dummyIndex)
         -- Clean up old dummy
         dummy:Destroy()
         
+        -- Recalculate spawn position relative to current TeleportArena position
+        local spawnPosition = getWorldPosition(DUMMY_RELATIVE_POSITIONS[dummyIndex])
+        
         -- Create new dummy
         local newDummy = createDummy(DUMMY_NAMES[dummyIndex], spawnPosition)
         dummyData[dummyIndex] = newDummy
         
         -- Setup AI and respawn for new dummy
         startDummyAI(newDummy)
-        setupDummyRespawn(newDummy, spawnPosition, dummyIndex)
+        setupDummyRespawn(newDummy, dummyIndex)
     end)
 end
 
@@ -406,14 +446,14 @@ function DummySystem.init()
     
     -- Create dummies
     for i = 1, DUMMY_COUNT do
-        local dummy = createDummy(DUMMY_NAMES[i], DUMMY_SPAWN_POSITIONS[i])
+        local dummy = createDummy(DUMMY_NAMES[i], getWorldPosition(DUMMY_RELATIVE_POSITIONS[i]))
         dummyData[i] = dummy
         
         -- Start AI
         startDummyAI(dummy)
         
         -- Setup respawn
-        setupDummyRespawn(dummy, DUMMY_SPAWN_POSITIONS[i], i)
+        setupDummyRespawn(dummy, i)
     end
     
     -- Start position recording for all dummies

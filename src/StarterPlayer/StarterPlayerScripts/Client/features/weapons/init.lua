@@ -5,181 +5,150 @@ local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local shootEvent = ReplicatedStorage:WaitForChild("ShootEvent")
 local weaponSelectionEvent = ReplicatedStorage:WaitForChild("WeaponSelectionEvent")
+local RandomSeedEvent = ReplicatedStorage:WaitForChild("RandomSeedEvent")
 
 local Shotgun = require(script.shotgun)
 local BossAttack = require(script.bossattack)
+local AssaultRifle = require(script.assaultrifle)
 local WeaponSelector = require(script.ui.WeaponSelector)
-local WeaponConstants = require(ReplicatedStorage.features.weapons)
+
+-- Seed management for deterministic spread patterns
+local currentSeed = tick()
+
+-- Get current seed and increment it
+local function getAndIncrementSeed()
+    local seed = currentSeed
+    currentSeed = currentSeed + 1
+    return seed
+end
 
 local Weapons = {
 	currentWeapon = nil,
 	availableWeapons = {
 		shotgun = Shotgun,
-		bossattack = BossAttack
+		bossattack = BossAttack,
+		assaultrifle = AssaultRifle
 	},
 	activeBullets = {}, -- Table to store active bullet animations
-	lastFireTime = 0,
-	bulletCounter = 0,
-	crosshair = nil -- Store crosshair UI
+	crosshair = nil, -- Store crosshair UI
 }
 
--- Damage animation system
-local function createDamageGui()
-	local player = Players.LocalPlayer
-	local playerGui = player:WaitForChild("PlayerGui")
-	
-	-- Create or get existing damage GUI
-	local damageGui = playerGui:FindFirstChild("DamageGui")
-	if not damageGui then
-		damageGui = Instance.new("ScreenGui")
-		damageGui.Name = "DamageGui"
-		damageGui.ResetOnSpawn = false
-		damageGui.IgnoreGuiInset = true
-		damageGui.Parent = playerGui
-	end
-	
-	return damageGui
-end
-
-local function showDamageNumber(totalDamage, hitPosition)
-	local damageGui = createDamageGui()
-	local camera = workspace.CurrentCamera
-	
-	-- Convert 3D position to screen position
-	local screenPosition, onScreen = camera:WorldToScreenPoint(hitPosition)
-	
-	if not onScreen then
-		-- If hit position is off-screen, show damage near crosshair
-		screenPosition = Vector3.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2, 0)
-	end
-	
-	-- Create damage label
-	local damageLabel = Instance.new("TextLabel")
-	damageLabel.Name = "DamageNumber"
-	damageLabel.Size = UDim2.new(0, 100, 0, 40)
-	damageLabel.Position = UDim2.new(0, screenPosition.X - 50, 0, screenPosition.Y - 20)
-	damageLabel.BackgroundTransparency = 1
-	damageLabel.Text = "-" .. totalDamage
-	damageLabel.TextColor3 = Color3.fromRGB(255, 100, 100) -- Red damage color
-	damageLabel.TextScaled = true
-	damageLabel.Font = Enum.Font.GothamBold
-	damageLabel.TextStrokeTransparency = 0
-	damageLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-	damageLabel.ZIndex = 1000
-	damageLabel.Parent = damageGui
-	
-	-- Add text size constraint for better readability
-	local textSizeConstraint = Instance.new("UITextSizeConstraint")
-	textSizeConstraint.MaxTextSize = 36
-	textSizeConstraint.MinTextSize = 18
-	textSizeConstraint.Parent = damageLabel
-	
-	-- Animate the damage number
-	local startScale = 0.5
-	local peakScale = 1.2
-	local endScale = 0.8
-	
-	-- Initial scale
-	damageLabel.Size = UDim2.new(0, 100 * startScale, 0, 40 * startScale)
-	
-	-- Create animation sequence
-	local scaleUpTween = TweenService:Create(damageLabel, 
-		TweenInfo.new(0.15, Enum.EasingStyle.Back, Enum.EasingDirection.Out), 
-		{
-			Size = UDim2.new(0, 100 * peakScale, 0, 40 * peakScale),
-			Position = UDim2.new(0, screenPosition.X - 50 * peakScale, 0, screenPosition.Y - 20 * peakScale - 20)
-		}
-	)
-	
-	local fadeOutTween = TweenService:Create(damageLabel,
-		TweenInfo.new(0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-		{
-			Size = UDim2.new(0, 100 * endScale, 0, 40 * endScale),
-			Position = UDim2.new(0, screenPosition.X - 50 * endScale, 0, screenPosition.Y - 20 * endScale - 60),
-			TextTransparency = 1,
-			TextStrokeTransparency = 1
-		}
-	)
-	
-	-- Play animations in sequence
-	scaleUpTween:Play()
-	scaleUpTween.Completed:Connect(function()
-		fadeOutTween:Play()
-		fadeOutTween.Completed:Connect(function()
-			damageLabel:Destroy()
-		end)
-	end)
-	
-	-- Add some random horizontal drift for variety
-	local driftTween = TweenService:Create(damageLabel,
-		TweenInfo.new(0.95, Enum.EasingStyle.Sine, Enum.EasingDirection.Out),
-		{
-			Position = UDim2.new(0, screenPosition.X - 50 + math.random(-30, 30), 0, screenPosition.Y - 80)
-		}
-	)
-	driftTween:Play()
-end
-
--- Simple crosshair creation without animations (fallback)
-local function createSimpleCrosshair()	
+-- Create dynamic crosshair that adjusts based on accuracy
+local function createDynamicCrosshair()	
 	local player = Players.LocalPlayer
 	local playerGui = player:WaitForChild("PlayerGui")
 	
 	-- Create ScreenGui for crosshair
 	local crosshairGui = Instance.new("ScreenGui")
-	crosshairGui.Name = "SimpleCrosshairGui"
-	crosshairGui.ResetOnSpawn = false
+	crosshairGui.Name = "DynamicCrosshairGui"
+	crosshairGui.ResetOnSpawn = true
 	crosshairGui.IgnoreGuiInset = true
 	crosshairGui.Parent = playerGui
 	
 	-- Create main crosshair frame
 	local crosshairFrame = Instance.new("Frame")
-	crosshairFrame.Name = "SimpleCrosshair"
-	crosshairFrame.Size = UDim2.new(0, 20, 0, 20)
-	crosshairFrame.Position = UDim2.new(0.5, -10, 0.5, -10)
+	crosshairFrame.Name = "DynamicCrosshair"
+	crosshairFrame.Size = UDim2.new(0, 80, 0, 80) -- Larger frame to accommodate more spreading
+	crosshairFrame.Position = UDim2.new(0.5, -40, 0.5, -40)
 	crosshairFrame.BackgroundTransparency = 1
 	crosshairFrame.Visible = true
 	crosshairFrame.Parent = crosshairGui
 	
-	-- Create vertical line
-	local verticalLine = Instance.new("Frame")
-	verticalLine.Name = "VerticalLine"
-	verticalLine.Size = UDim2.new(0, 2, 0, 12)
-	verticalLine.Position = UDim2.new(0.5, -1, 0.5, -6)
-	verticalLine.BackgroundColor3 = Color3.new(1, 1, 1)
-	verticalLine.BackgroundTransparency = 0 -- Make it immediately visible
-	verticalLine.BorderSizePixel = 0
-	verticalLine.Parent = crosshairFrame
+	-- Create top vertical line
+	local topLine = Instance.new("Frame")
+	topLine.Name = "TopLine"
+	topLine.Size = UDim2.new(0, 2, 0, 10)
+	topLine.Position = UDim2.new(0.5, -1, 0.5, -12) -- Above center
+	topLine.BackgroundColor3 = Color3.new(1, 1, 1)
+	topLine.BackgroundTransparency = 0
+	topLine.BorderSizePixel = 0
+	topLine.Parent = crosshairFrame
 	
-	-- Create horizontal line
-	local horizontalLine = Instance.new("Frame")
-	horizontalLine.Name = "HorizontalLine"
-	horizontalLine.Size = UDim2.new(0, 12, 0, 2)
-	horizontalLine.Position = UDim2.new(0.5, -6, 0.5, -1)
-	horizontalLine.BackgroundColor3 = Color3.new(1, 1, 1)
-	horizontalLine.BackgroundTransparency = 0 -- Make it immediately visible
-	horizontalLine.BorderSizePixel = 0
-	horizontalLine.Parent = crosshairFrame
+	-- Create bottom vertical line
+	local bottomLine = Instance.new("Frame")
+	bottomLine.Name = "BottomLine"
+	bottomLine.Size = UDim2.new(0, 2, 0, 10)
+	bottomLine.Position = UDim2.new(0.5, -1, 0.5, 2) -- Below center
+	bottomLine.BackgroundColor3 = Color3.new(1, 1, 1)
+	bottomLine.BackgroundTransparency = 0
+	bottomLine.BorderSizePixel = 0
+	bottomLine.Parent = crosshairFrame
 	
-	-- Add outline effect
-	for _, line in pairs({verticalLine, horizontalLine}) do
-		local outline = Instance.new("UIStroke")
-		outline.Color = Color3.new(0, 0, 0)
-		outline.Thickness = 1
-		outline.Parent = line
-	end
+	-- Create left horizontal line
+	local leftLine = Instance.new("Frame")
+	leftLine.Name = "LeftLine"
+	leftLine.Size = UDim2.new(0, 10, 0, 2)
+	leftLine.Position = UDim2.new(0.5, -12, 0.5, -1) -- Left of center
+	leftLine.BackgroundColor3 = Color3.new(1, 1, 1)
+	leftLine.BackgroundTransparency = 0
+	leftLine.BorderSizePixel = 0
+	leftLine.Parent = crosshairFrame
+	
+	-- Create right horizontal line
+	local rightLine = Instance.new("Frame")
+	rightLine.Name = "RightLine"
+	rightLine.Size = UDim2.new(0, 10, 0, 2)
+	rightLine.Position = UDim2.new(0.5, 2, 0.5, -1) -- Right of center
+	rightLine.BackgroundColor3 = Color3.new(1, 1, 1)
+	rightLine.BackgroundTransparency = 0
+	rightLine.BorderSizePixel = 0
+	rightLine.Parent = crosshairFrame
 	
 	return crosshairGui
 end
 
--- Generate unique bullet ID on client
-local function generateBulletId()
-	Weapons.bulletCounter = Weapons.bulletCounter + 1
-	local player = Players.LocalPlayer
-	return player.Name .. "_" .. Weapons.bulletCounter .. "_" .. tick()
+-- Update crosshair spread based on accuracy
+local function updateCrosshairSpread(crosshairGui, accuracy)
+	if not crosshairGui then
+		return
+	end
+	
+	local crosshairFrame = crosshairGui:FindFirstChild("DynamicCrosshair")
+	if not crosshairFrame then
+		return
+	end
+	
+	local topLine = crosshairFrame:FindFirstChild("TopLine")
+	local bottomLine = crosshairFrame:FindFirstChild("BottomLine")
+	local leftLine = crosshairFrame:FindFirstChild("LeftLine")
+	local rightLine = crosshairFrame:FindFirstChild("RightLine")
+	
+	if not topLine or not bottomLine or not leftLine or not rightLine then
+		return
+	end
+	
+	-- Calculate spread distance based on accuracy (0 = max spread, 1 = no spread)
+	local maxSpread = 25 -- Increased maximum pixels the crosshair lines can spread apart
+	local spreadDistance = maxSpread * (1 - accuracy)
+	
+	-- Update top line position (move up from center)
+	topLine.Position = UDim2.new(0.5, -1, 0.5, -12 - spreadDistance/2)
+	
+	-- Update bottom line position (move down from center)
+	bottomLine.Position = UDim2.new(0.5, -1, 0.5, 2 + spreadDistance/2)
+	
+	-- Update left line position (move left from center)
+	leftLine.Position = UDim2.new(0.5, -12 - spreadDistance/2, 0.5, -1)
+	
+	-- Update right line position (move right from center)
+	rightLine.Position = UDim2.new(0.5, 2 + spreadDistance/2, 0.5, -1)
 end
 
--- Centralized bullet animation system
+-- Calculate player velocity
+local function calculatePlayerVelocity()
+	local player = Players.LocalPlayer
+	local character = player.Character
+	if not character or not character.PrimaryPart then
+		return Vector3.new(0, 0, 0)
+	end
+	
+	-- Use HumanoidRootPart velocity for accurate movement speed
+	local velocity = character.PrimaryPart.Velocity
+	
+	return velocity
+end
+
+-- Centralized bullet animation system and accuracy tracking
 local function updateBullets(deltaTime)
 	for bulletId, bulletData in pairs(Weapons.activeBullets) do
 		if bulletData.update then
@@ -195,6 +164,50 @@ RunService.Heartbeat:Connect(updateBullets)
 weaponSelectionEvent.OnClientEvent:Connect(function(weaponType)
 	Weapons.equip(weaponType)
 end)
+
+function Weapons.handleFireFromClient()
+	if not Weapons.currentWeapon then
+		return
+	end
+	
+	-- Calculate firing direction from camera
+	local camera = workspace.CurrentCamera
+	if not camera then
+		return
+	end
+	
+	local direction = camera.CFrame.LookVector
+	local startPosition = camera.CFrame.Position + direction * 2
+	
+	local weapon = Weapons.availableWeapons[Weapons.currentWeapon]
+
+	local seed = getAndIncrementSeed()
+	
+	-- Delegate complete firing logic to the individual weapon with seed and direction
+	local hits, bulletAnimations = weapon.handleFireFromClient(direction, startPosition, seed)
+	
+	-- Handle bullet animations returned from weapon
+	for bulletId, bulletData in pairs(bulletAnimations) do
+		Weapons.activeBullets[bulletId] = bulletData
+	end
+	
+	-- Send hits and direction to server if any
+	if #hits > 0 then
+		shootEvent:FireServer(hits, direction, startPosition, seed)
+	end
+end
+
+function Weapons.handleFireFromServer(weaponType, bullets)
+	local weapon = Weapons.availableWeapons[weaponType]
+	
+	-- Delegate server bullet handling to the individual weapon
+	local bulletAnimations = weapon.handleFireFromServer(bullets)
+	
+	-- Handle bullet animations returned from weapon
+	for bulletId, bulletData in pairs(bulletAnimations) do
+		Weapons.activeBullets[bulletId] = bulletData
+	end
+end
 
 function Weapons.init()
 	-- Initialize weapon selector
@@ -212,34 +225,71 @@ function Weapons.init()
 			Weapons.crosshair = nil
 		end
 	end)
-	
-	player.CharacterAdded:Connect(function()
-		-- Small delay to ensure character is fully loaded
-		task.wait(1)
-		-- Re-equip default weapon after respawn
-		Weapons.equip("shotgun", false)
-	end)
 
-	-- Handle shooting input
+	player.CharacterAdded:Connect(function(character)
+		if Weapons.crosshair then
+			Weapons.crosshair:Destroy()
+		end
+		Weapons.crosshair = createDynamicCrosshair()
+	end)
+	-- Handle shooting input with continuous firing support
+	local isMouseDown = false
+	local isTouchDown = false
+	
 	if UserInputService.TouchEnabled and not UserInputService.MouseEnabled then
+		-- Touch input handling
 		UserInputService.TouchTap:Connect(function(touchPositions, processedByUI)
 			if not processedByUI then
-				Weapons.handleFire()
+				Weapons.handleFireFromClient()
 			end
 		end)
+		
+		UserInputService.TouchStarted:Connect(function(touch, processedByUI)
+			if not processedByUI then
+				isTouchDown = true
+				-- Start continuous firing
+				task.spawn(function()
+					while isTouchDown do
+						Weapons.handleFireFromClient()
+						task.wait() -- Wait one frame
+					end
+				end)
+			end
+		end)
+		
+		UserInputService.TouchEnded:Connect(function(touch, processedByUI)
+			isTouchDown = false
+		end)
 	else
+		-- Mouse input handling
 		UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
+			if not gameProcessed and input.KeyCode == Enum.KeyCode.B then
+				WeaponSelector.toggle()
+			end
+
 			if not gameProcessedEvent and input.UserInputType == Enum.UserInputType.MouseButton1 then
-				Weapons.handleFire()
+				isMouseDown = true
+				-- Start continuous firing
+				task.spawn(function()
+					while isMouseDown do
+						Weapons.handleFireFromClient()
+						task.wait() -- Wait one frame
+					end
+				end)
+			end
+		end)
+		
+		UserInputService.InputEnded:Connect(function(input, gameProcessedEvent)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 then
+				isMouseDown = false
 			end
 		end)
 	end
 
 	-- Handle incoming bullet events from server
 	shootEvent.OnClientEvent:Connect(function(data)
-		print("data", data)
 		if data.action == "create" then
-			Weapons.fire(
+			Weapons.handleFireFromServer(
 				data.weaponType,
 				data.bullets
 			)
@@ -247,31 +297,6 @@ function Weapons.init()
 			Weapons.activeBullets[bulletId] = nil
 		end
 	end)
-end
-
-function Weapons.handleFire()
-	if not Weapons.currentWeapon then
-		return
-	end
-	local weaponConstants = WeaponConstants[Weapons.currentWeapon]
-	local weapon = Weapons.availableWeapons[Weapons.currentWeapon]
-	local currentTime = tick()
-	local fireRate = weaponConstants.FIRE_COOLDOWN or weaponConstants.COOLDOWN or 0.5
-	
-	if currentTime - Weapons.lastFireTime >= fireRate then
-		Weapons.lastFireTime = currentTime
-		-- Calculate local firing parameters
-		local camera = workspace.CurrentCamera
-		if camera then
-			local direction = camera.CFrame.LookVector
-			local startPosition = camera.CFrame.Position + direction * 2
-			local directions = weapon.createSpreadPattern(startPosition, direction)
-			for _, direction in ipairs(directions) do
-				direction["id"] = generateBulletId()
-			end
-			Weapons.fire(Weapons.currentWeapon, directions)
-		end
-	end
 end
 
 function Weapons.equip(weaponType, notifyServer)	
@@ -291,84 +316,12 @@ function Weapons.equip(weaponType, notifyServer)
 	weapon.equip()
 	Weapons.currentWeapon = weaponType
 	
-	if not weapon.hideCrosshair then
-		Weapons.crosshair = createSimpleCrosshair()
+	if not Weapons.crosshair then
+		Weapons.crosshair = createDynamicCrosshair()
 	end
 	
 	if notifyServer then
 		weaponSelectionEvent:FireServer(weaponType)
-	end
-end
-
-function Weapons.fire(weaponType, bullets)
-	local weapon = Weapons.availableWeapons[weaponType]
-	local weaponConstants = WeaponConstants[weaponType]
-	if weapon then
-		-- Get the animation function for the bullets
-		local hits = {}
-		for _, bullet in ipairs(bullets) do			
-			-- Check if this is a local firing (bullet ID starts with local player's name)
-			local player = Players.LocalPlayer
-			if bullet.id and bullet.id:find("^" .. player.Name .. "_") then
-				-- Perform client-side raycast to detect what we hit
-				local camera = workspace.CurrentCamera
-				local raycastParams = RaycastParams.new()
-				raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
-				raycastParams.FilterDescendantsInstances = {player.Character}
-				
-				-- Raycast in the direction we're shooting
-				local raycastDistance = 1000 -- Max shooting distance
-				local raycastResult = workspace:Raycast(bullet.startPosition, bullet.direction * raycastDistance, raycastParams)
-				local hitPart = nil
-				local hitPosition = nil
-				
-				if raycastResult and raycastResult.Instance.Parent:FindFirstChildOfClass("Humanoid") then
-					hitPart = raycastResult.Instance
-					hitPosition = raycastResult.Position
-				end
-				
-				table.insert(hits, {
-					id = bullet.id,
-					direction = bullet.direction,
-					startPosition = bullet.startPosition,
-					hitPart = hitPart,
-					hitPosition = hitPosition
-				})
-				local maxDistance = weaponConstants.MAX_BULLET_DISTANCE
-				local hitVector = hitPosition and hitPosition - bullet.startPosition
-				if hitVector then
-					maxDistance = hitVector.Magnitude
-				end
-
-				local updateBullet = weapon.animateBullet(bullet.startPosition, bullet.direction, maxDistance)
-				if updateBullet then
-					Weapons.activeBullets[bullet.id] = {
-						update = updateBullet
-					}
-				end
-			end
-		end
-
-		if #hits > 0 then
-			-- Find the average hit position for damage display
-			local avgHitPosition = Vector3.new(0, 0, 0)
-			local validHits = 0
-			for _, hit in ipairs(hits) do
-				if hit.hitPosition then
-					avgHitPosition = avgHitPosition + hit.hitPosition
-					validHits = validHits + 1
-				end
-			end
-
-			totalDamage = validHits * weaponConstants.DAMAGE_PER_BULLET
-			
-			if validHits > 0 then
-				avgHitPosition = avgHitPosition / validHits
-				showDamageNumber(totalDamage, avgHitPosition)
-			end
-			
-			shootEvent:FireServer(hits)
-		end
 	end
 end
 

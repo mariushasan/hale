@@ -13,7 +13,9 @@ end
 
 type PlayerTable = {[number]: Player}
 function Teleport:teleportPlayers(players: PlayerTable)
-    local halfSize = self.destination.Size * 0.45 -- little less than half the size to avoid walls
+    local halfSize = self.destination.Size * 0.4 -- 40% to ensure we stay well within bounds
+    local centerPosition = self.destination.CFrame.Position -- Use CFrame.Position for the center
+    
     for _, player in pairs(players) do
         if player then
             local character = player.Character
@@ -25,7 +27,7 @@ function Teleport:teleportPlayers(players: PlayerTable)
                 local randomZ = math.random(-halfSize.Z, halfSize.Z)
 
                 -- Calculate the random end position within the destination part - slightly above the part
-                local endPosition = self.destination.Position + Vector3.new(randomX, 10, randomZ)
+                local endPosition = centerPosition + Vector3.new(randomX, halfSize.Y + 5, randomZ)
                 character:PivotTo(CFrame.new(endPosition))
             end
         end

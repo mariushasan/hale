@@ -452,12 +452,6 @@ function Inventory.init()
     end)
 end
 
--- Utility functions for other systems
-function Inventory.getPlayerCoins(player)
-    local data = getPlayerData(player)
-    return data and data.coins or 0
-end
-
 function Inventory.playerOwnsItem(player, itemId)
     return playerOwnsItem(player, itemId)
 end

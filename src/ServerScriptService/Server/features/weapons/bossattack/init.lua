@@ -26,19 +26,6 @@ local function toggleCharacterSize(character, enlarge)
 
 	-- Adjust Humanoid scale factors based on the action
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
-	if humanoid then
-		if enlarge then
-			humanoid.BodyWidthScale.Value = scaleFactor
-			humanoid.BodyHeightScale.Value = scaleFactor
-			humanoid.BodyDepthScale.Value = scaleFactor
-			humanoid.HeadScale.Value = scaleFactor
-		else
-			humanoid.BodyWidthScale.Value = 1
-			humanoid.BodyHeightScale.Value = 1
-			humanoid.BodyDepthScale.Value = 1
-			humanoid.HeadScale.Value = 1
-		end
-	end
 end
 
 -- Setup boss controls
