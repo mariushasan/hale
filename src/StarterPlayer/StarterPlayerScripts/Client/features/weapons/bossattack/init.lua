@@ -100,20 +100,14 @@ end
 
 function BossAttack.equip()
     -- Boss attack doesn't need visual weapon model
-    print("Boss attack equipped - ready for melee combat!")
 end
 
 function BossAttack.unequip()
-    -- Nothing to cleanup for boss attack
-    print("Boss attack unequipped")
 end
 
 function BossAttack.fire(startPosition, direction)
     -- Create immediate explosion effect at player position
     createExplosionEffect(startPosition)
-    
-    -- Add screen shake or other effects here if desired
-    print("Boss attack fired!")
 end
 
 -- Boss attack is instantaneous, so no bullet animation needed

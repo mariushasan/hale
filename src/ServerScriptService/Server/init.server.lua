@@ -35,7 +35,6 @@ end
 Players.PlayerAdded:Connect(function(player)
 	-- Set up character spawning (both initial and respawns)
 	player.CharacterAdded:Connect(function(character)
-		print("Character added")
 		setPlayerSpeed(character)
 		setPlayerJumpHeight(character)
 	end)

@@ -466,9 +466,6 @@ function weapons.init()
 
         local targetTime = nil
 
-        print("FIRST HIT PART")
-        print(firstHitPart)
-
         if firstHitPart then
             local bestMetric = math.huge
             -- Determine whether we hit a player or a dummy
@@ -545,9 +542,6 @@ function weapons.init()
                         if dummy and dummy:FindFirstChildOfClass("Humanoid") then
                             local humanoid = dummy:FindFirstChildOfClass("Humanoid")
                             
-                            -- Apply damage to the dummy
-                            print("DAMAGE")
-                            print(damage)
                             humanoid.Health = humanoid.Health - damage
                             
                             -- Update leaderboard for damage dealt
@@ -580,8 +574,6 @@ function weapons.init()
                     hitPosition = hit.hitPosition,
                 })
             end
-        else
-            print("No target time found for world rewind")
         end
 
         -- Send bullet to all players except the shooter

@@ -53,8 +53,6 @@ function BossAttackWeapon.equip(player)
 	
 	toggleCharacterSize(player.Character, true)
 	setupBossControls(player)
-	
-	print(player.Name .. " is now the boss with melee attacks and high jump!")
 end
 
 -- Server-side unequip function (removes boss transformation)
@@ -70,8 +68,6 @@ function BossAttackWeapon.unequip(player)
 	
 	-- Clear boss status
 	currentBossPlayers[player.UserId] = nil
-	
-	print(player.Name .. " is no longer the boss")
 end
 
 return BossAttackWeapon 

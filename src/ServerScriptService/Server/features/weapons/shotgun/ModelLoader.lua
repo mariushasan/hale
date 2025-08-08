@@ -47,15 +47,6 @@ local function loadShotgunModel()
     -- Place the new model in ReplicatedStorage
     shotgunClone.Parent = commonFolder
     
-    for _, child in pairs(shotgunClone:GetChildren()) do
-        print("- " .. child.Name .. " (" .. child.ClassName .. ")")
-        if child:IsA("BasePart") then
-            print("  - Material: " .. tostring(child.Material))
-            print("  - Color: " .. tostring(child.Color))
-            print("  - Transparency: " .. tostring(child.Transparency))
-        end
-    end
-    
     -- Clean up the loaded asset
     loadedAsset:Destroy()
 end

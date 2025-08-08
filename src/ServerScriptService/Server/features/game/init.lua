@@ -8,6 +8,10 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TimerRemoteEvent = ReplicatedStorage:WaitForChild("TimerRemoteEvent")
 local OutcomeRemoteEvent = ReplicatedStorage:WaitForChild("OutcomeRemoteEvent")
 local Players = game:GetService("Players")
+Players.CharacterAutoLoads = false
+
+-- Create spectator status remote event
+local spectatorStatusEvent = ReplicatedStorage:WaitForChild("SpectatorStatusEvent")
 
 -- Parts
 local TeleportWaiting = game.Workspace.WaitingRoom.TeleportWaiting
@@ -17,12 +21,11 @@ local WaitingRoomFloor = game.Workspace.WaitingRoom.Floor
 -- Constants
 local TESTING = false
 local MINUTE = 60
-local GAME_TIME = 60
-local WAITING_TIME = 2
+local GAME_TIME = 120
+local WAITING_TIME = 5
 local DEBOUNCE = 3
 local PLAYER_THRESHOLD = 1
 local states = {
-	WAITING = "WAITING",
 	PLAYING = "PLAYING",
 	END = "END",
 }
@@ -35,21 +38,74 @@ local playersWaiting = {}
 local playersInArena = {}
 local gameTimerTask = nil
 local waitingMonitorTask = nil
-
 local state = states.END
 
 -- Define the Game object
 local Game = {}
 
 -- Internal functions
+local function updateSpectatorStatus()
+	for _, player in pairs(Players:GetPlayers()) do
+		local isSpectator = false
+		
+		-- Player is spectator if they're in playersWaiting (dead/waiting)
+		if playersWaiting[player.UserId] then
+			isSpectator = true
+		end
+		
+		-- Player is also spectator if they're dead during a game
+		if player.Character and player.Character:FindFirstChild("Humanoid") then
+			if player.Character.Humanoid.Health <= 0 and state == states.PLAYING then
+				isSpectator = true
+			end
+		end
+		
+		spectatorStatusEvent:FireClient(player, isSpectator)
+	end
+end
+
+local function startPlayerMonitoring()
+	if not waitingMonitorTask then
+		waitingMonitorTask = task.spawn(function()
+			while true do
+				task.wait(1) -- Check every second
+				
+				-- Count alive players
+				local waitingPlayerCount = 0
+				for _, player in pairs(playersWaiting) do
+					waitingPlayerCount = waitingPlayerCount + 1
+				end
+				
+				-- Start game if we have enough players
+				if waitingPlayerCount >= PLAYER_THRESHOLD and state == states.END then
+					waitingMonitorTask = nil
+					TimerRemoteEvent:FireAllClients(WAITING_TIME)
+					task.wait(WAITING_TIME)
+					startGame()
+					break
+				end
+			end
+		end)
+	end
+end
+
 function startGame()
 	state = states.PLAYING
-
+	print(playersWaiting)
 	if TESTING then
 		return nil
 	end
 
-	-- Teleport players to the arena
+	-- Manually spawn all waiting players
+	for userId, player in pairs(playersWaiting) do
+		print(player)
+		if player and player.Parent then -- Check if player is still in game
+			player:LoadCharacter()
+		end
+	end
+	
+	-- Wait a moment for characters to load
+	task.wait(1)
 
 	-- Team assignment logic
 	Teams.assignTeams(playersWaiting)
@@ -58,12 +114,17 @@ function startGame()
 	local bossPlayer = Teams.getBossPlayer()
 
 	-- Count players in waiting table
-	local playerCount = 0
+	local waitingPlayerCount = 0
 	for _ in pairs(playersWaiting) do
-		playerCount = playerCount + 1
+		waitingPlayerCount = waitingPlayerCount + 1
 	end
 
-	if not bossPlayer or playerCount < PLAYER_THRESHOLD then
+	if waitingPlayerCount < PLAYER_THRESHOLD then
+		endGame()
+		return
+	end
+
+	if not bossPlayer then
 		state = states.END
 		return
 	end
@@ -71,13 +132,21 @@ function startGame()
 	-- Equip boss attack weapon (handles both server transformation and client notification)
 	Weapons.equipPlayerWeapon(bossPlayer, "bossattack")
 
-	teleportToArena:teleportPlayers(playersWaiting)
+	for _, player in pairs(playersWaiting) do
+		table.insert(playersInArena, player)
+		playersWaiting[player.UserId] = nil
+	end
+
 	-- Synchronize random seed with all clients for deterministic spread patterns
 	local ReplicatedStorage = game:GetService("ReplicatedStorage")
 	local RandomSeedEvent = ReplicatedStorage:WaitForChild("RandomSeedEvent")
 
 	-- Start the game timer
 	TimerRemoteEvent:FireAllClients(GAME_TIME)
+	
+	-- Update spectator status for all players
+	print("1")
+	updateSpectatorStatus()
 
 	-- End the game after done
 	gameTimerTask = task.delay(GAME_TIME, function()
@@ -105,35 +174,65 @@ function endGame()
 	end
 
 	-- Teleport players back to the waiting room
-	teleportToWait:teleportPlayers(playersInArena)
 
-	-- Back to waiting team
+	TimerRemoteEvent:FireAllClients(WAITING_TIME)
+					
+	-- Start monitoring for enough players instead of auto-starting
+	startPlayerMonitoring()
+
 	Teams.assignWaitingTeams(playersInArena)
 
-	-- Reset player stats
+	for _, player in pairs(playersInArena) do
+		table.insert(playersWaiting, player)
+		playersInArena[player.UserId] = nil
+	end
+
 	local allPlayers = game.Players:GetPlayers()
 	for _, player in pairs(allPlayers) do
 		Leaderboard.setStat(player, "Damage", 0)
 	end
+	
+	-- Update spectator status after game ends
+	print("2")
+	updateSpectatorStatus()
 end
 
 -- Event listeners
 function Game.init()
 	Teams.init()
 
-	for _, player in pairs(Players:GetPlayers()) do
-		player.Team = Teams.waitingTeam
-	end
+	local allPlayers = Players:GetPlayers()
+	Teams.assignWaitingTeams(allPlayers)
+
+	-- Start initial player monitoring
+	startPlayerMonitoring()
 
 	Players.PlayerAdded:Connect(function(player)
 		player.Team = Teams.waitingTeam
+		table.insert(playersWaiting, player)
+		print(playersWaiting)
+
+		-- Add player to waiting list immediately (they'll be spectators until game starts)
+		
+		-- Update spectator status for the new player
+		updateSpectatorStatus()
 
 		player.CharacterAdded:Connect(function(character)
 			local humanoid = character:WaitForChild("Humanoid")
+
+			-- Update spectator status when player spawn
+			print("3")
+			updateSpectatorStatus()
 			
 			humanoid.Died:Connect(function()
-				playersWaiting[player.UserId] = nil
+				playersWaiting[player.UserId] = player
 				playersInArena[player.UserId] = nil
+				player.Team = Teams.waitingTeam
+				
+				-- Update spectator status when player dies
+				print("4")
+				updateSpectatorStatus()
+				
 				-- Only check team elimination if game is currently playing
 				if state == states.PLAYING then
 					-- Check if entire team is eliminated
@@ -160,7 +259,6 @@ function Game.init()
 								OutcomeRemoteEvent:FireClient(player, "Defeat")
 							end
 						end
-						print("6")
 						TimerRemoteEvent:FireAllClients(0) -- Stop the timer
 						endGame()
 					elseif not survivorTeamAlive then
@@ -172,7 +270,6 @@ function Game.init()
 								OutcomeRemoteEvent:FireClient(player, "Defeat")
 							end
 						end
-						print("5")
 						TimerRemoteEvent:FireAllClients(0) -- Stop the timer
 						endGame()
 					end
@@ -184,6 +281,10 @@ function Game.init()
 	Players.PlayerRemoving:Connect(function(player)
 		playersWaiting[player.UserId] = nil
 		playersInArena[player.UserId] = nil
+		
+		-- Update spectator status when player leaves
+		print("5")
+		updateSpectatorStatus()
 		
 		-- Only check team elimination if game is currently playing
 		if state == states.PLAYING then
@@ -211,7 +312,6 @@ function Game.init()
 						OutcomeRemoteEvent:FireClient(player, "Defeat")
 					end
 				end
-				print("4")
 				TimerRemoteEvent:FireAllClients(0) -- Stop the timer
 				endGame()
 			elseif not survivorTeamAlive then
@@ -223,70 +323,9 @@ function Game.init()
 						OutcomeRemoteEvent:FireClient(player, "Defeat")
 					end
 				end
-				print("3")
 				TimerRemoteEvent:FireAllClients(0) -- Stop the timer
 				endGame()
 			end
-		end
-	end)
-
-	TeleportWaiting.Touched:Connect(function(hit)
-		local player = game.Players:GetPlayerFromCharacter(hit.Parent)
-		if player and not playersWaiting[player.UserId] then
-			playersWaiting[player.UserId] = player
-			playersInArena[player.UserId] = nil
-		end
-
-		-- Count players in waiting table
-		local playerCount = 0
-		for _ in pairs(playersWaiting) do
-			playerCount = playerCount + 1
-		end
-
-		if state == states.END then
-			if playerCount >= PLAYER_THRESHOLD then
-				state = states.WAITING
-				
-				waitingMonitorTask = task.spawn(function()
-					for i = WAITING_TIME, 1, -1 do
-						task.wait(1)
-						
-						-- Count players in waiting table
-						local currentPlayerCount = 0
-						for _ in pairs(playersWaiting) do
-							currentPlayerCount = currentPlayerCount + 1
-						end
-						
-						if currentPlayerCount < PLAYER_THRESHOLD then
-							state = states.END
-							print("2")
-							TimerRemoteEvent:FireAllClients(0)
-							waitingMonitorTask = nil
-							return
-						end
-					end
-					
-					waitingMonitorTask = nil
-					startGame()
-				end)
-				print("1")
-				TimerRemoteEvent:FireAllClients(WAITING_TIME)
-			end
-		end
-	end)
-
-	TeleportArena.Touched:Connect(function(hit)
-		local player = game.Players:GetPlayerFromCharacter(hit.Parent)
-		if player and not playersInArena[player.UserId] then
-			playersInArena[player.UserId] = player
-			playersWaiting[player.UserId] = nil
-		end
-	end)
-
-	WaitingRoomFloor.Touched:Connect(function(hit)
-		local player = game.Players:GetPlayerFromCharacter(hit.Parent)
-		if player and playersWaiting[player.UserId] then
-			playersWaiting[player.UserId] = nil
 		end
 	end)
 end

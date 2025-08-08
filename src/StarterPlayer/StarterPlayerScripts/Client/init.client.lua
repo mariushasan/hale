@@ -3,9 +3,11 @@ local Game = require(game.StarterPlayer.StarterPlayerScripts.Client.features.gam
 local Shop = require(game.StarterPlayer.StarterPlayerScripts.Client.features.shop)
 local Inventory = require(game.StarterPlayer.StarterPlayerScripts.Client.features.inventory)
 local LogViewer = require(game.StarterPlayer.StarterPlayerScripts.Client.LogViewer)
+local Spectator = require(game.StarterPlayer.StarterPlayerScripts.Client.features.spectator)
 
 Shop.init()
 Weapons.init()
 Game.init()
 Inventory.init()
 LogViewer.init()
+Spectator.init()

@@ -30,6 +30,9 @@
       },
       "RandomSeedEvent": {
         "$className": "RemoteEvent"
+      },
+      "SpectatorStatusEvent": {
+        "$className": "RemoteEvent"
       }
     },
     "ServerScriptService": {

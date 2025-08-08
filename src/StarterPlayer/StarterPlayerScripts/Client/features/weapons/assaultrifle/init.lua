@@ -133,7 +133,6 @@ local function setupCameraArmSync(character)
     visualHumanoid:SetStateEnabled(Enum.HumanoidStateType.Physics, false)
     
     -- Scale the visual rig to 0.7 of original size
-    print(visualRig:IsA("Model"))
     visualRig:ScaleTo(0.7)
     
     for _, part in pairs(visualRig:GetDescendants()) do
@@ -167,8 +166,6 @@ local function setupCameraArmSync(character)
         visualTorso.CanCollide = false
         visualTorso.CollisionGroup = "VisualOnly"
     end)
-    
-    print("DEBUG: Camera-attached visual rig system established")
 end
 
 local function setupFirstPerson(character)
@@ -360,7 +357,6 @@ function AssaultRifle.equip()
     for _, clothingType in ipairs(clothingItems) do
         local originalClothing = originalCharacter:FindFirstChildOfClass(clothingType)
         if originalClothing then
-            print("DEBUG: Found", clothingType, "- copying to SMG character")
             -- Remove existing clothing of this type from SMG character
             local existingClothing = newCharacterModel:FindFirstChildOfClass(clothingType)
             if existingClothing then
@@ -502,7 +498,6 @@ function AssaultRifle.handleFireFromClient()
                 local raycastResult = workspace:Raycast(raycastData.startPosition, raycastData.direction * raycastDistance, raycastParams)
                 
                 if raycastResult and raycastResult.Instance.Parent:FindFirstChildOfClass("Humanoid") then
-                    print("HIT PART")
                     hitPart = raycastResult.Instance
                     hitPosition = raycastResult.Position
                     hitRaycastData = raycastData -- Store the raycast data that hit

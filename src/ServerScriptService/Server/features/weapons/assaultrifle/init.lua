@@ -37,7 +37,6 @@ function AssaultRifle.equip(player)
     for _, clothingType in ipairs(clothingItems) do
         local originalClothing = originalCharacter:FindFirstChildOfClass(clothingType)
         if originalClothing then
-            print("DEBUG: Found", clothingType, "- copying to SMG character")
             -- Remove existing clothing of this type from SMG character
             local existingClothing = newCharacterModel:FindFirstChildOfClass(clothingType)
             if existingClothing then
@@ -52,7 +51,6 @@ function AssaultRifle.equip(player)
     -- Also preserve any Accessory items (hats, etc.)
     for _, child in ipairs(originalCharacter:GetChildren()) do
         if child:IsA("Accessory") then
-            print("DEBUG: Found Accessory:", child.Name, "- copying to SMG character")
             local newAccessory = child:Clone()
             newAccessory.Parent = newCharacterModel
         end
@@ -124,7 +122,6 @@ function AssaultRifle.equip(player)
         if animationTrack then
             animationTrack.Looped = true
             animationTrack:Play()
-            print("DEBUG: Playing animation for", player.Name)
             currentAnimationTracks[player.UserId] = animationTrack
         end
     end

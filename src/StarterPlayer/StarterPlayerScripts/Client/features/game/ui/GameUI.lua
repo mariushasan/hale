@@ -32,7 +32,6 @@ function GameUI.init()
     MiddleLabel = Instance.new("TextLabel")
     MiddleLabel.Name = "MiddleLabel"
     MiddleLabel.Parent = HUDGui
-    print("Creating MiddleLabel")
     MiddleLabel.Visible = false
     MiddleLabel.TextSize = 120
     MiddleLabel.TextColor3 = Color3.new(1, 1, 1)
@@ -68,11 +67,9 @@ function GameUI.showGameEnd(outcome)
         MiddleLabel.Text = "Defeat"
         MiddleLabel.TextColor3 = Color3.fromRGB(128, 0, 0)
     end
-    print("Showing game end")
     MiddleLabel.Visible = true
 
     task.delay(6, function()
-        print("Hiding game end")
         MiddleLabel.Visible = false
     end)
 end

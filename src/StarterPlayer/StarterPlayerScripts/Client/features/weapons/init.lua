@@ -231,6 +231,13 @@ function Weapons.init()
 			Weapons.crosshair:Destroy()
 		end
 		Weapons.crosshair = createDynamicCrosshair()
+
+		local humanoid = character:WaitForChild("Humanoid")
+		humanoid.Died:Connect(function()
+			if Weapons.crosshair then
+				Weapons.crosshair:Destroy()
+			end
+		end)
 	end)
 	-- Handle shooting input with continuous firing support
 	local isMouseDown = false
@@ -309,7 +316,6 @@ function Weapons.equip(weaponType, notifyServer)
 	local weapon = Weapons.availableWeapons[weaponType]
 
 	if not weapon then
-		print("Weapon not found:", weaponType)
 		return
 	end
 	

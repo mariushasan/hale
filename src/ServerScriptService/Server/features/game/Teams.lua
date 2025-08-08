@@ -2,19 +2,19 @@ local Teams = {}
 
 Teams.TeamTypes = {
 	BOSS = "Boss",
-	OTHER = "Other", 
+	SURVIVOR = "Survivor", 
 	WAITING = "Waiting"
 }
 
 Teams.bossTeam = nil
-Teams.otherTeam = nil
+Teams.survivorTeam = nil
 Teams.waitingTeam = nil
 
 function Teams.assignTeams(players)
 	local userIds = {}
 	for userId, player in pairs(players) do
 		table.insert(userIds, userId)
-		player.Team = Teams.otherTeam
+		player.Team = Teams.survivorTeam
 	end
 
 	-- Check if we have any players before assigning boss
@@ -56,14 +56,14 @@ function Teams.init()
 		Teams.bossTeam = TeamsService:FindFirstChild(Teams.TeamTypes.BOSS)
 	end
 
-	if not TeamsService:FindFirstChild(Teams.TeamTypes.OTHER) then
-		Teams.otherTeam = Instance.new("Team")
-		Teams.otherTeam.TeamColor = BrickColor.new("Bright blue")
-		Teams.otherTeam.AutoAssignable = false
-		Teams.otherTeam.Name = Teams.TeamTypes.OTHER
-		Teams.otherTeam.Parent = TeamsService
+	if not TeamsService:FindFirstChild(Teams.TeamTypes.SURVIVOR) then
+		Teams.survivorTeam = Instance.new("Team")
+		Teams.survivorTeam.TeamColor = BrickColor.new("Bright blue")
+		Teams.survivorTeam.AutoAssignable = false
+		Teams.survivorTeam.Name = Teams.TeamTypes.SURVIVOR
+		Teams.survivorTeam.Parent = TeamsService
 	else
-		Teams.otherTeam = TeamsService:FindFirstChild(Teams.TeamTypes.OTHER)
+		Teams.survivorTeam = TeamsService:FindFirstChild(Teams.TeamTypes.SURVIVOR)
 	end
 
 	if not TeamsService:FindFirstChild(Teams.TeamTypes.WAITING) then
