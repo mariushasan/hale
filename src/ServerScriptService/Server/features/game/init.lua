@@ -3,26 +3,26 @@ local Leaderboard = require(game.ServerScriptService.Server.shared.Leaderboard)
 
 local Teams = require(game.ServerScriptService.Server.features.game.Teams)
 local Weapons = require(game.ServerScriptService.Server.features.weapons)
+local MapVoting = require(game.ServerScriptService.Server.features.mapvoting)
+local Spectator = require(game.ServerScriptService.Server.features.spectator)
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TimerRemoteEvent = ReplicatedStorage:WaitForChild("TimerRemoteEvent")
-local OutcomeRemoteEvent = ReplicatedStorage:WaitForChild("OutcomeRemoteEvent")
+local events = ReplicatedStorage:WaitForChild("events")
+local TimerRemoteEvent = events:WaitForChild("TimerRemoteEvent")
+local OutcomeRemoteEvent = events:WaitForChild("OutcomeRemoteEvent")
 local Players = game:GetService("Players")
+
+
 Players.CharacterAutoLoads = false
 
 -- Create spectator status remote event
-local spectatorStatusEvent = ReplicatedStorage:WaitForChild("SpectatorStatusEvent")
-
--- Parts
-local TeleportWaiting = game.Workspace.WaitingRoom.TeleportWaiting
-local TeleportArena = game.Workspace.TeleportArena
-local WaitingRoomFloor = game.Workspace.WaitingRoom.Floor
+local spectatorStatusEvent = events:WaitForChild("SpectatorStatusEvent")
 
 -- Constants
 local TESTING = false
 local MINUTE = 60
-local GAME_TIME = 120
-local WAITING_TIME = 5
+local GAME_TIME = 60
+local WAITING_TIME = 3
 local DEBOUNCE = 3
 local PLAYER_THRESHOLD = 1
 local states = {
@@ -31,9 +31,6 @@ local states = {
 }
 
 -- Local properties
-local teleportToArena = Teleport:new(TeleportWaiting, TeleportArena)
-local teleportToWait = Teleport:new(TeleportArena, TeleportWaiting)
-
 local playersWaiting = {}
 local playersInArena = {}
 local gameTimerTask = nil
@@ -42,27 +39,6 @@ local state = states.END
 
 -- Define the Game object
 local Game = {}
-
--- Internal functions
-local function updateSpectatorStatus()
-	for _, player in pairs(Players:GetPlayers()) do
-		local isSpectator = false
-		
-		-- Player is spectator if they're in playersWaiting (dead/waiting)
-		if playersWaiting[player.UserId] then
-			isSpectator = true
-		end
-		
-		-- Player is also spectator if they're dead during a game
-		if player.Character and player.Character:FindFirstChild("Humanoid") then
-			if player.Character.Humanoid.Health <= 0 and state == states.PLAYING then
-				isSpectator = true
-			end
-		end
-		
-		spectatorStatusEvent:FireClient(player, isSpectator)
-	end
-end
 
 local function startPlayerMonitoring()
 	if not waitingMonitorTask then
@@ -80,7 +56,22 @@ local function startPlayerMonitoring()
 				if waitingPlayerCount >= PLAYER_THRESHOLD and state == states.END then
 					waitingMonitorTask = nil
 					TimerRemoteEvent:FireAllClients(WAITING_TIME)
-					task.wait(WAITING_TIME)
+					-- Start map voting and get the winning map
+					local winningMap = MapVoting.startVoting(WAITING_TIME)
+					
+					-- Load the winning map before starting the game
+					print("winningMap", winningMap)
+					if winningMap then
+						local mapLoaded = MapVoting.loadMap(winningMap)
+						if mapLoaded then
+							print("Map loaded successfully, starting game with:", winningMap)
+						else
+							warn("Failed to load map:", winningMap, "- starting game anyway")
+						end
+					else
+						warn("No winning map returned from voting!")
+					end
+					
 					startGame()
 					break
 				end
@@ -91,14 +82,13 @@ end
 
 function startGame()
 	state = states.PLAYING
-	print(playersWaiting)
+
 	if TESTING then
 		return nil
 	end
 
 	-- Manually spawn all waiting players
 	for userId, player in pairs(playersWaiting) do
-		print(player)
 		if player and player.Parent then -- Check if player is still in game
 			player:LoadCharacter()
 		end
@@ -138,15 +128,13 @@ function startGame()
 	end
 
 	-- Synchronize random seed with all clients for deterministic spread patterns
-	local ReplicatedStorage = game:GetService("ReplicatedStorage")
-	local RandomSeedEvent = ReplicatedStorage:WaitForChild("RandomSeedEvent")
+	local RandomSeedEvent = events:WaitForChild("RandomSeedEvent")
 
 	-- Start the game timer
 	TimerRemoteEvent:FireAllClients(GAME_TIME)
 	
 	-- Update spectator status for all players
-	print("1")
-	updateSpectatorStatus()
+	Spectator.updateSpectatorStatus()
 
 	-- End the game after done
 	gameTimerTask = task.delay(GAME_TIME, function()
@@ -191,10 +179,6 @@ function endGame()
 	for _, player in pairs(allPlayers) do
 		Leaderboard.setStat(player, "Damage", 0)
 	end
-	
-	-- Update spectator status after game ends
-	print("2")
-	updateSpectatorStatus()
 end
 
 -- Event listeners
@@ -210,19 +194,17 @@ function Game.init()
 	Players.PlayerAdded:Connect(function(player)
 		player.Team = Teams.waitingTeam
 		table.insert(playersWaiting, player)
-		print(playersWaiting)
 
 		-- Add player to waiting list immediately (they'll be spectators until game starts)
 		
 		-- Update spectator status for the new player
-		updateSpectatorStatus()
+		Spectator.updateSpectatorStatus()
 
 		player.CharacterAdded:Connect(function(character)
 			local humanoid = character:WaitForChild("Humanoid")
 
 			-- Update spectator status when player spawn
-			print("3")
-			updateSpectatorStatus()
+			Spectator.updateSpectatorStatus()
 			
 			humanoid.Died:Connect(function()
 				playersWaiting[player.UserId] = player
@@ -230,8 +212,7 @@ function Game.init()
 				player.Team = Teams.waitingTeam
 				
 				-- Update spectator status when player dies
-				print("4")
-				updateSpectatorStatus()
+				Spectator.updateSpectatorStatus()
 				
 				-- Only check team elimination if game is currently playing
 				if state == states.PLAYING then
@@ -281,11 +262,7 @@ function Game.init()
 	Players.PlayerRemoving:Connect(function(player)
 		playersWaiting[player.UserId] = nil
 		playersInArena[player.UserId] = nil
-		
-		-- Update spectator status when player leaves
-		print("5")
-		updateSpectatorStatus()
-		
+
 		-- Only check team elimination if game is currently playing
 		if state == states.PLAYING then
 			-- Check if entire team is eliminated

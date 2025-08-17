@@ -4,6 +4,7 @@ local RunService = game:GetService("RunService")
 local PhysicsService = game:GetService("PhysicsService")
 local Leaderboard = require(game.ServerScriptService.Server.shared.Leaderboard)
 local Teams = require(game.ServerScriptService.Server.features.game.Teams)
+local events = ReplicatedStorage:WaitForChild("events")
 
 -- Import constants
 local WeaponConstants = require(ReplicatedStorage.features.weapons)
@@ -56,8 +57,8 @@ local function getWeaponModule(weaponType)
 end
 
 -- Remote events
-local ShootEvent = ReplicatedStorage:WaitForChild("ShootEvent")
-local WeaponSelectionEvent = ReplicatedStorage:WaitForChild("WeaponSelectionEvent")
+local ShootEvent = events:WaitForChild("ShootEvent")
+local WeaponSelectionEvent = events:WaitForChild("WeaponSelectionEvent")
 
 local DummySystem = require(script.DummySystem)
 local weapons = {}

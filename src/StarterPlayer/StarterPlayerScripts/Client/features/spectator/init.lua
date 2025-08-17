@@ -2,6 +2,7 @@ local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local events = ReplicatedStorage:WaitForChild("events")
 
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
@@ -15,7 +16,7 @@ local currentSpectatedIndex = 1
 local spectatorConnection = nil
 
 -- Get spectator status from server
-local spectatorStatusEvent = ReplicatedStorage:WaitForChild("SpectatorStatusEvent")
+local spectatorStatusEvent = events:WaitForChild("SpectatorStatusEvent")
 
 -- Function to get all alive players to spectate
 local function getAlivePlayersToSpectate()

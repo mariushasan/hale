@@ -1,7 +1,6 @@
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local StarterGui = game:GetService("StarterGui")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
@@ -9,13 +8,9 @@ local Workspace = game:GetService("Workspace")
 local WeaponConstants = require(ReplicatedStorage.features.weapons)
 
 -- Import inventory system
-local Inventory = require(game.StarterPlayer.StarterPlayerScripts.Client.features.inventory)
+local Inventory = require(game.StarterPlayer.StarterPlayerScripts.Client.shared.inventory)
 
--- Function to scale UI elements based on screen width
-local function dpx(scale)
-    local screenWidth = Workspace.CurrentCamera.ViewportSize.X
-    return screenWidth * scale
-end
+local Util = require(game.StarterPlayer.StarterPlayerScripts.Client.shared.util)
 
 local Shop = {}
 local shopGui = nil
@@ -643,20 +638,6 @@ local function createWeaponDetails(parent, constants)
     end
 end
 
--- Function to hide chat and leaderboard
-local function hideDefaultGuis()
-    -- Store original states
-    originalChatEnabled = StarterGui:GetCoreGuiEnabled(Enum.CoreGuiType.Chat)
-    originalLeaderboardEnabled = StarterGui:GetCoreGuiEnabled(Enum.CoreGuiType.PlayerList)
-    
-    -- Hide chat and leaderboard
-    StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Chat, false)
-    StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.PlayerList, false)
-    
-    -- Ensure mouse cursor is visible
-    UserInputService.MouseIconEnabled = true
-end
-
 -- Public functions
 function Shop.show()
     if not shopGui then
@@ -667,23 +648,13 @@ function Shop.show()
     end
     
     shopGui.Enabled = true
-    hideDefaultGuis() -- Hide chat and leaderboard when shop opens
-end
-
--- Function to restore chat and leaderboard
-local function showDefaultGuis()
-    -- Restore original states
-    StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Chat, originalChatEnabled)
-    StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.PlayerList, originalLeaderboardEnabled)
-    
-    -- Restore mouse cursor (keep it enabled for normal gameplay)
-    UserInputService.MouseIconEnabled = true
+    Util.hideDefaultGuis() -- Hide chat and leaderboard when shop opens
 end
 
 function Shop.hide()
     if shopGui then
         shopGui.Enabled = false
-        showDefaultGuis() -- Restore chat and leaderboard when shop closes
+        Util.showDefaultGuis() -- Restore chat and leaderboard when shop closes
         
         -- Clean up size change connections
         for scrollFrame, connection in pairs(sizeConnections) do
@@ -767,24 +738,10 @@ local function createShopIcon()
     iconGui.Parent = playerGui
     iconGui.IgnoreGuiInset = true
     
-    -- Create the shop icon button
+    -- Create the shop icon button (positioned by parent menu system)
     local shopIcon = Instance.new("TextButton")
     shopIcon.Name = "ShopIcon"
-    shopIcon.Size = UDim2.new(0, 60, 0, 60) -- Round 60x60 button
-    
-    -- Position based on device type
-    if UserInputService.TouchEnabled and not UserInputService.MouseEnabled then
-        -- Mobile: Top right corner
-        shopIcon.Position = UDim2.new(1, -80, 0, 20) -- 20px from top and right
-        
-    -- Override safe area positioning by using absolute positioning
-        local guiInset = game:GetService("GuiService"):GetGuiInset()
-        shopIcon.Position = UDim2.new(1, -80, 0, 20) -- Add safe area offset
-    else
-        -- Desktop: Bottom left corner
-        shopIcon.Position = UDim2.new(0, 20, 1, -80) -- Bottom-left corner with padding
-        shopIcon.AnchorPoint = Vector2.new(0, 0)
-    end
+    shopIcon.Size = UDim2.new(0, 50, 0, 50) -- Standard submenu icon size
     
     shopIcon.BackgroundColor3 = Color3.fromRGB(45, 45, 50) -- Dark theme to match shop
     shopIcon.BorderSizePixel = 0
@@ -808,7 +765,7 @@ local function createShopIcon()
     -- Add hover effects
     shopIcon.MouseEnter:Connect(function()
         local tween = TweenService:Create(shopIcon, TweenInfo.new(0.2), {
-            Size = UDim2.new(0, 65, 0, 65),
+            Size = UDim2.new(0, 55, 0, 55),
             BackgroundColor3 = Color3.fromRGB(55, 55, 60)
         })
         tween:Play()
@@ -822,7 +779,7 @@ local function createShopIcon()
     
     shopIcon.MouseLeave:Connect(function()
         local tween = TweenService:Create(shopIcon, TweenInfo.new(0.2), {
-            Size = UDim2.new(0, 60, 0, 60),
+            Size = UDim2.new(0, 50, 0, 50),
             BackgroundColor3 = Color3.fromRGB(45, 45, 50)
         })
         tween:Play()
@@ -842,9 +799,13 @@ local function createShopIcon()
     return iconGui
 end
 
--- Initialize the shop icon when module loads
+-- Create shop icon (called from game module)
+function Shop.createShopIcon()
+    return createShopIcon()
+end
+
+-- Initialize the shop (no longer creates icon automatically)
 function Shop.init()
-    shopIconGui = createShopIcon()
     if not UserInputService.TouchEnabled or UserInputService.MouseEnabled then
         UserInputService.InputBegan:Connect(function(input, gameProcessed)
             if not gameProcessed and input.KeyCode == Enum.KeyCode.P then

@@ -1,16 +1,16 @@
 local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local events = ReplicatedStorage:WaitForChild("events")
 local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
-local shootEvent = ReplicatedStorage:WaitForChild("ShootEvent")
-local weaponSelectionEvent = ReplicatedStorage:WaitForChild("WeaponSelectionEvent")
-local RandomSeedEvent = ReplicatedStorage:WaitForChild("RandomSeedEvent")
+local shootEvent = events:WaitForChild("ShootEvent")
+local weaponSelectionEvent = events:WaitForChild("WeaponSelectionEvent")
+local RandomSeedEvent = events:WaitForChild("RandomSeedEvent")
 
 local Shotgun = require(script.shotgun)
 local BossAttack = require(script.bossattack)
 local AssaultRifle = require(script.assaultrifle)
-local WeaponSelector = require(script.ui.WeaponSelector)
 
 -- Seed management for deterministic spread patterns
 local currentSeed = tick()
@@ -210,8 +210,6 @@ function Weapons.handleFireFromServer(weaponType, bullets)
 end
 
 function Weapons.init()
-	-- Initialize weapon selector
-	WeaponSelector.init(Weapons)
 	
 	-- Equip default weapon
 	local currentWeaponType = Weapons.currentWeapon or "shotgun"
@@ -270,10 +268,6 @@ function Weapons.init()
 	else
 		-- Mouse input handling
 		UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
-			if not gameProcessed and input.KeyCode == Enum.KeyCode.B then
-				WeaponSelector.toggle()
-			end
-
 			if not gameProcessedEvent and input.UserInputType == Enum.UserInputType.MouseButton1 then
 				isMouseDown = true
 				-- Start continuous firing
@@ -306,14 +300,17 @@ function Weapons.init()
 	end)
 end
 
-function Weapons.equip(weaponType, notifyServer)	
+function Weapons.equip(weaponType, notifyServer)
+	print("Equipping weapon:", weaponType)
 	-- Unequip current weapon if any
 	if Weapons.currentWeapon then
+		print("Unequipping current weapon:", Weapons.currentWeapon)
 		Weapons.availableWeapons[Weapons.currentWeapon].unequip()
 	end
 
 	-- Equip new weapon
 	local weapon = Weapons.availableWeapons[weaponType]
+	print("Weapon:", weapon)
 
 	if not weapon then
 		return

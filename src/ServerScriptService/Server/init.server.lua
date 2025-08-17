@@ -3,9 +3,11 @@ local Leaderboard = require(game.ServerScriptService.Server.shared.Leaderboard)
 local Game = require(game.ServerScriptService.Server.features.game) -- Initialize the game
 local Weapons = require(game.ServerScriptService.Server.features.weapons)
 local Inventory = require(game.ServerScriptService.Server.features.inventory)
+local MapVoting = require(game.ServerScriptService.Server.features.mapvoting)
 local Players = game:GetService("Players")
 
 Inventory.init()
+MapVoting.init()
 
 -- Function to set player walk speed
 local function setPlayerSpeed(character)

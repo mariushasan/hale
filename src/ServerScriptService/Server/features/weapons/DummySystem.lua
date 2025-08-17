@@ -3,10 +3,11 @@ local RunService = game:GetService("RunService")
 local PathfindingService = game:GetService("PathfindingService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local PhysicsService = game:GetService("PhysicsService")
+local events = ReplicatedStorage:WaitForChild("events")
 
 local PLAYER_CHARACTERS_GROUP = "PlayerCharacters"  -- must match weapons.init
 
-local debugLogEvent = ReplicatedStorage:FindFirstChild("DebugLogEvent")
+local debugLogEvent = events:FindFirstChild("DebugLogEvent")
 if not debugLogEvent then
     debugLogEvent = Instance.new("RemoteEvent")
     debugLogEvent.Name = "DebugLogEvent"

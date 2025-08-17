@@ -2,12 +2,13 @@ local LogService = game:GetService("LogService")
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local events = ReplicatedStorage:WaitForChild("events")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
 -- Get or wait for debug log event
-local debugLogEvent = ReplicatedStorage:WaitForChild("DebugLogEvent")
+local debugLogEvent = events:WaitForChild("DebugLogEvent")
 
 -- Create GUI
 local screenGui = Instance.new("ScreenGui")

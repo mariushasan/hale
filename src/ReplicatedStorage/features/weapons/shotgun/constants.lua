@@ -1,6 +1,6 @@
 local ShotgunConstants = {
     -- Shop Properties
-    SHOP = true,
+    SHOP = false,
     ID = "shotgun",
     PRICE = 500,
     DISPLAY_NAME = "Combat Shotgun",

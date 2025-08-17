@@ -92,22 +92,36 @@ end
 
 -- Function to sync arms with camera rotation in first-person
 local function setupCameraArmSync(character)
+    print("14")
+    print("Setting up camera arm sync")
+    print("Character:", character)
     local humanoid = character:FindFirstChildOfClass("Humanoid")
     local rootPart = character:FindFirstChild("HumanoidRootPart")
+
+    print("Humanoid:", humanoid)
+    print("RootPart:", rootPart)
         
     if not (humanoid and rootPart) then
         return
     end
+
+    print("15")
     
     -- Clean up any existing visual rig
     if visualRig then
         visualRig:Destroy()
         visualRig = nil
     end
+
+    print("16")
     
     -- Clone the character for visual rig
     visualRig = character:Clone()
     visualRig.Name = character.Name .. "_VisualRig"
+
+    print("VisualRig:", visualRig)
+
+    print("17")
     
     -- Make the visual rig non-collideable and completely independent
     local visualHumanoid = visualRig:FindFirstChildOfClass("Humanoid")
@@ -121,6 +135,8 @@ local function setupCameraArmSync(character)
         visualRig = nil
         return
     end
+
+    print("18")
     
     -- Make visual rig completely independent and non-interfering
     visualHumanoid.PlatformStand = true
@@ -131,6 +147,8 @@ local function setupCameraArmSync(character)
     visualRootPart.CanCollide = false
     visualRootPart.CollisionGroup = "VisualOnly"
     visualHumanoid:SetStateEnabled(Enum.HumanoidStateType.Physics, false)
+
+    print("19")
     
     -- Scale the visual rig to 0.7 of original size
     visualRig:ScaleTo(0.7)
@@ -141,18 +159,48 @@ local function setupCameraArmSync(character)
             part.CollisionGroup = "VisualOnly"
         end
     end
+
+    print("20")
     
     visualRig.Parent = workspace.CurrentCamera
+
+    -- Animation handling for custom UMPIdle animation
+    if visualHumanoid then
+        local animator = visualHumanoid:FindFirstChildOfClass("Animator")
+        if not animator then
+            animator = Instance.new("Animator")
+            animator.Parent = visualHumanoid
+        end
+        
+        -- Try to get animation from SMG model's AnimSaves first
+        local animation = Instance.new("Animation")
+        animation.AnimationId = ASSAULT_RIFLE_HOLD_ANIM_ID
+        
+        currentHoldAnimationTrack = animator:LoadAnimation(animation)
+        
+        if currentHoldAnimationTrack then
+            
+            -- Set properties before playing
+            currentHoldAnimationTrack.Looped = true
+            currentHoldAnimationTrack.Priority = Enum.AnimationPriority.Action
+            
+            currentHoldAnimationTrack:Play()
+        end
+    end
     
     local visualAnimator = visualHumanoid:FindFirstChildOfClass("Animator")
     if not visualAnimator then
         visualAnimator = Instance.new("Animator")
         visualAnimator.Parent = visualHumanoid
     end
+
+    print("21")
     
     local animationId = "rbxassetid://124292358269579"
     local animation = Instance.new("Animation")
     animation.AnimationId = animationId
+
+    print("22")
     
     cameraArmSyncConnection = RunService.RenderStepped:Connect(function()
         local camera = workspace.CurrentCamera
@@ -169,12 +217,15 @@ local function setupCameraArmSync(character)
 end
 
 local function setupFirstPerson(character)
-    local player = Players.LocalPlayer
-    player.CameraMode = Enum.CameraMode.LockFirstPerson
+    print("8")
+
+    print("9")
 
     local whitelistedParts = {
         "Left Arm", "Right Arm"
     }
+
+    print("10")
 
     if visualRig then
         for _, partName in ipairs(whitelistedParts) do
@@ -187,8 +238,11 @@ local function setupFirstPerson(character)
             end
         end
 
-        local visualWeapon = visualRig:FindFirstChild("SMG")
+        print("11")
+
+            local visualWeapon = visualRig:FindFirstChild("SMG")
         if visualWeapon then
+            print("12")
             for _, part in pairs(visualWeapon:GetDescendants()) do
                 if part:IsA("BasePart") then
                     part.LocalTransparencyModifier = part.Transparency
@@ -199,6 +253,8 @@ local function setupFirstPerson(character)
             end
         end
     end
+
+    print("13")
 
     setupCameraArmSync(character)
 end
@@ -221,38 +277,57 @@ local function cleanupFirstPerson(character)
     end
 end
 
--- Create a bullet with trail effect
-local function createBullet(startPosition, direction)
-    local bullet = BulletTemplate:Clone()
+-- Create a moving beam effect that travels from start to end
+local function createBeam(startPosition, endPosition)
+    local direction = (endPosition - startPosition).Unit
     
-    -- Simple positioning first - no orientation
-    bullet.CFrame = CFrame.new(startPosition, startPosition + direction)
-    bullet.Parent = workspace
-            
-    -- Add attachment points for trail with simple positions
-    local attachment1 = Instance.new("Attachment")
-    attachment1.Name = "TrailAttachment1"
-    attachment1.Position = Vector3.new(0.02, 0, 0)  -- Center of bullet
-    attachment1.Parent = bullet
+    -- Create small beam that will move forward
+    local beamLength = 3 -- Length of the beam in studs
     
-    local attachment2 = Instance.new("Attachment")
-    attachment2.Name = "TrailAttachment2"
-    attachment2.Position = Vector3.new(-0.02, 0, 0)
-    attachment2.Parent = bullet
+    -- Create invisible parts to hold the attachments
+    local startPart = Instance.new("Part")
+    startPart.Name = "BeamStart"
+    startPart.Size = Vector3.new(0.1, 0.1, 0.1)
+    startPart.Position = startPosition
+    startPart.Anchored = true
+    startPart.CanCollide = false
+    startPart.Transparency = 1
+    startPart.Parent = workspace
     
-    -- Create trail effect with basic settings
-    local trail = Instance.new("Trail")
-    trail.Name = "BulletTrail"
-    trail.Color = ColorSequence.new(Color3.fromRGB(255, 165, 0)) -- Orange color for assault rifle
-    trail.Transparency = NumberSequence.new(0) -- Fully opaque
-    trail.Lifetime = 0.15 -- Slightly longer trail
-    trail.MinLength = 0
-    trail.Enabled = true
-    trail.Attachment0 = attachment1
-    trail.Attachment1 = attachment2
-    trail.Parent = bullet
+    local endPart = Instance.new("Part")
+    endPart.Name = "BeamEnd"
+    endPart.Size = Vector3.new(0.1, 0.1, 0.1)
+    endPart.Position = startPosition + (direction * beamLength)
+    endPart.Anchored = true
+    endPart.CanCollide = false
+    endPart.Transparency = 1
+    endPart.Parent = workspace
     
-    return bullet
+    -- Create attachments
+    local startAttachment = Instance.new("Attachment")
+    startAttachment.Name = "BeamStart"
+    startAttachment.Parent = startPart
+    
+    local endAttachment = Instance.new("Attachment")
+    endAttachment.Name = "BeamEnd"
+    endAttachment.Parent = endPart
+    
+    -- Create the beam
+    local beam = Instance.new("Beam")
+    beam.Name = "BulletBeam"
+    beam.Color = ColorSequence.new(Color3.fromRGB(255, 165, 0)) -- Orange color for assault rifle
+    beam.Transparency = NumberSequence.new(0.1) -- Slightly transparent
+    beam.Width0 = 0.03 -- Small beam
+    beam.Width1 = 0.03 -- Consistent width
+    beam.FaceCamera = true
+    beam.LightEmission = 0.8 -- High glow for visibility
+    beam.LightInfluence = 0 -- Not affected by lighting
+    beam.Attachment0 = startAttachment
+    beam.Attachment1 = endAttachment
+    beam.Parent = startPart
+    
+    -- Animate the beam moving forward
+    return beam
 end
 
 -- Create spread pattern for assault rifle (single bullet, no spread - accuracy handled by camera shift)
@@ -276,33 +351,35 @@ function AssaultRifle.createSpreadPattern(startPosition, direction)
 end
 
 function AssaultRifle.animateBullet(startPosition, direction, maxDistance)
-    -- Create bullet
-    local bulletPart = createBullet(startPosition, direction)
+    -- Calculate end position based on max distance
+    local endPosition = startPosition + (direction.Unit * maxDistance)
+    
+    -- Create beam from start to end position (automatically cleans up after 0.15s)
+    local bulletStart = visualRig:FindFirstChild("BulletStart", true)
+    local bulletStartPosition = bulletStart and bulletStart.WorldPosition or startPosition
+    
+    print("Firing bullet from:", bulletStartPosition)
+    print("Camera position:", startPosition)
+    print("Target position:", endPosition)
 
-    local bullet = {
-        part = bulletPart,
-        direction = direction.Unit,
-        startTime = tick(),
-        startPosition = startPosition,
-    }
-    
-    -- Store the initial CFrame rotation to avoid precision issues
-    local initialCFrame = CFrame.new(bullet.startPosition, bullet.startPosition + bullet.direction)
-    
-    -- Return update function
-    return function(deltaTime)
-        local currentTime = tick()
-        
-        -- Check if bullet still exists
-        local elapsedTime = currentTime - bullet.startTime
-        local distance = 400 * elapsedTime -- Faster bullet speed than shotgun
-        
-        -- Move bullet
-        local newPosition = bullet.startPosition + (bullet.direction * distance)
-        bullet.part.Position = newPosition
-        -- Remove bullet if it has traveled too far
+    local beam = createBeam(bulletStartPosition, endPosition)
+    local direction = (endPosition - bulletStartPosition).Unit
+    local startTime = tick()
+    local bulletSpeed = 800
+    local beamLength = 3
+
+    return function()
+        local elapsed = tick() - startTime
+        local distance = bulletSpeed * elapsed
+
+        -- Bullet should travel from the original firing position in a straight line
+        local newPosition = bulletStartPosition + (direction * distance)
+
+        beam.Attachment0.WorldPosition = newPosition
+        beam.Attachment1.WorldPosition = newPosition + (direction * beamLength)
+
         if distance > maxDistance then
-            bullet.part:Destroy()
+            beam:Destroy()
             return false
         end
 
@@ -311,16 +388,23 @@ function AssaultRifle.animateBullet(startPosition, direction, maxDistance)
 end
 
 function AssaultRifle.equip()
+    print("0")
+
     if not Players.LocalPlayer.Character then
         return
     end
 
-    local smgModel = Workspace:FindFirstChild("SMG")
+    print("1")
+
+    local smgModel = ReplicatedStorage:FindFirstChild("models"):FindFirstChild("weapons"):FindFirstChild("SMG")
     if not smgModel then
         return
     end
 
+    print("2")
+
     local originalCharacter = Players.LocalPlayer.Character
+    print("Original Character:", originalCharacter)
     local originalHumanoid = originalCharacter:FindFirstChildOfClass("Humanoid")
     
     -- Ensure the original character has a Humanoid
@@ -333,10 +417,15 @@ function AssaultRifle.equip()
     
     -- Get the Humanoid from the new SMG character
     local smgHumanoid = newCharacterModel:FindFirstChildOfClass("Humanoid")
+    
+    print("3")
+
     if not smgHumanoid then
         newCharacterModel:Destroy() -- Clean up the cloned character
         return
     end
+
+    print("4")
 
     -- Get the HumanoidRootPart from both characters for positioning
     local originalRootPart = originalCharacter:FindFirstChild("HumanoidRootPart")
@@ -351,6 +440,8 @@ function AssaultRifle.equip()
         newCharacterModel:Destroy()
         return
     end
+
+    print("5")
 
     -- Preserve original character's clothing
     local clothingItems = {"Shirt", "Pants", "ShirtGraphic"}
@@ -368,30 +459,10 @@ function AssaultRifle.equip()
         end
     end
 
-    -- Animation handling for custom UMPIdle animation
-    if smgHumanoid then
-        local animator = smgHumanoid:FindFirstChildOfClass("Animator")
-        if not animator then
-            animator = Instance.new("Animator")
-            animator.Parent = smgHumanoid
-        end
-        
-        -- Try to get animation from SMG model's AnimSaves first
-        local animation = Instance.new("Animation")
-        animation.AnimationId = ASSAULT_RIFLE_HOLD_ANIM_ID
-        
-        currentHoldAnimationTrack = animator:LoadAnimation(animation)
-        
-        if currentHoldAnimationTrack then
-            
-            -- Set properties before playing
-            currentHoldAnimationTrack.Looped = true
-            currentHoldAnimationTrack.Priority = Enum.AnimationPriority.Action
-            
-            currentHoldAnimationTrack:Play()
-        end
-    end
-    
+    print("6")
+
+    print("7")
+
     setupFirstPerson(newCharacterModel)
 end
 
@@ -449,21 +520,6 @@ function AssaultRifle.handleFireFromClient()
         return {}, {} -- Return empty hits and bullets
     end
     
-    -- Apply camera recoil using exponential function (before adding new kickback)
-    local maxRecoilStrength = 0.05 -- Maximum recoil when kickback is at max (0.4)
-    local normalizedKickback = currentKickbackAccuracyPenalty / 0.4 -- Normalize to 0-1 range
-    local exponentialFactor = math.pow(normalizedKickback, 2) -- Exponential curve (starts easy, gets strong)
-    local recoilStrength = exponentialFactor * maxRecoilStrength
-    local horizontalRecoil = (math.random() - 0.5) * recoilStrength * 0.5 -- Random left/right
-    
-    -- Apply recoil to camera
-    local currentCFrame = camera.CFrame
-    local recoilCFrame = CFrame.Angles(recoilStrength, horizontalRecoil, 0) -- Vertical up, horizontal random
-    camera.CFrame = currentCFrame * recoilCFrame
-    
-    -- Add kickback after applying recoil
-    currentKickbackAccuracyPenalty = math.min(MAX_KICKBACK_ACCURACY_PENALTY, currentKickbackAccuracyPenalty + KICKBACK_ACCURACY_PENALTY_PER_SHOT)
-    
     local bullets = AssaultRifle.createSpreadPattern(camera.CFrame.Position, camera.CFrame.LookVector)
     
     -- Assign bullet IDs
@@ -512,13 +568,11 @@ function AssaultRifle.handleFireFromClient()
                 maxDistance = hitVector.Magnitude
             end
             
-            -- Create bullet animation
-            local updateBullet = AssaultRifle.animateBullet(bullet.animationStartPosition, bullet.animationDirection, maxDistance)
-            if updateBullet then
-                bulletAnimations[bullet.id] = {
-                    update = updateBullet
-                }
-            end
+            -- Create bullet animation (beam automatically cleans up)
+            local updateFunction = AssaultRifle.animateBullet(bullet.animationStartPosition, bullet.animationDirection, maxDistance)
+            bulletAnimations[bullet.id] = {
+                update = updateFunction,
+            }
             
             -- Only add hit data if we actually hit something
             if bulletHit then
@@ -562,6 +616,8 @@ function AssaultRifle.handleFireFromClient()
     currentFireAnimationTrack = animator:LoadAnimation(animation)
     currentFireAnimationTrack.Looped = false
     currentFireAnimationTrack:Play()
+
+    print("Fire animation track:", currentFireAnimationTrack)
     
     return hits, bulletAnimations
 end
@@ -576,12 +632,11 @@ function AssaultRifle.handleFireFromServer(bullets)
             maxDistance = hitVector.Magnitude
         end
 
-        local updateBullet = AssaultRifle.animateBullet(bullet.animationStartPosition, bullet.animationDirection, maxDistance)
-        if updateBullet then
-            bulletAnimations[bullet.id] = {
-                update = updateBullet
-            }
-        end
+        -- Create bullet animation (beam automatically cleans up)
+        local updateFunction = AssaultRifle.animateBullet(bullet.animationStartPosition, bullet.animationDirection, maxDistance)
+        bulletAnimations[bullet.id] = {
+            update = updateFunction,
+        }
     end
     
     return bulletAnimations

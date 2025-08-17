@@ -16,7 +16,7 @@ function AssaultRifle.equip(player)
     end
 
     -- Get the SMG model from ReplicatedStorage (or ServerStorage if preferred)
-    local smgModel = Workspace:FindFirstChild("SMG")
+    local smgModel = ReplicatedStorage:FindFirstChild("models"):FindFirstChild("weapons"):FindFirstChild("SMG")
     if not smgModel then
         return
     end

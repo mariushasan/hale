@@ -1,6 +1,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local events = ReplicatedStorage:WaitForChild("events")
 
-local debugLogEvent = ReplicatedStorage:FindFirstChild("DebugLogEvent")
+local debugLogEvent = events:FindFirstChild("DebugLogEvent")
 if not debugLogEvent then
     debugLogEvent = Instance.new("RemoteEvent")
     debugLogEvent.Name = "DebugLogEvent"

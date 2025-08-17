@@ -1,9 +1,10 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local events = ReplicatedStorage:WaitForChild("events")
 local Players = game:GetService("Players")
 
 -- Remote Events
-local InventoryEvent = ReplicatedStorage:WaitForChild("InventoryEvent")
-local PurchaseEvent = ReplicatedStorage:WaitForChild("PurchaseEvent")
+local InventoryEvent = events:WaitForChild("InventoryEvent")
+local PurchaseEvent = events:WaitForChild("PurchaseEvent")
 
 local Inventory = {}
 
@@ -110,6 +111,8 @@ end
 
 -- Check if player owns an item
 function Inventory.ownsItem(itemId)
+    print("Checking if player owns item:", itemId)
+    print("Owned items:", inventoryData.ownedItems)
     return inventoryData.ownedItems[itemId] ~= nil
 end
 

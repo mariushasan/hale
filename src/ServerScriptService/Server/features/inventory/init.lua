@@ -2,6 +2,7 @@ local Players = game:GetService("Players")
 local DataStoreService = game:GetService("DataStoreService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local events = ReplicatedStorage:WaitForChild("events")
 
 -- DataStore for player inventories
 local InventoryDataStore = DataStoreService:GetDataStore("PlayerInventory")
@@ -33,8 +34,8 @@ if RunService:IsStudio() then
 end
 
 -- Remote Events
-local InventoryEvent = ReplicatedStorage:WaitForChild("InventoryEvent")
-local PurchaseEvent = ReplicatedStorage:WaitForChild("PurchaseEvent")
+local InventoryEvent = events:WaitForChild("InventoryEvent")
+local PurchaseEvent = events:WaitForChild("PurchaseEvent")
 
 -- Import weapon constants for pricing
 local WeaponConstants = require(ReplicatedStorage.features.weapons)
@@ -51,7 +52,13 @@ local SHOP_ITEMS = {
         price = WeaponConstants.shotgun.PRICE,
         name = WeaponConstants.shotgun.DISPLAY_NAME,
         category = "weapon"
-    }
+    },
+    assaultrifle = {
+        id = "assaultrifle",
+        price = WeaponConstants.assaultrifle.PRICE,
+        name = WeaponConstants.assaultrifle.DISPLAY_NAME,
+        category = "weapon"
+    },
     -- Add more items here as they become available
 }
 

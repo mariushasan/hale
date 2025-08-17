@@ -4,35 +4,45 @@
     "$className": "DataModel",
     "ReplicatedStorage": {
       "$path": "src/ReplicatedStorage",
-      "TimerRemoteEvent": {
-        "$className": "RemoteEvent"
-      },
-      "ShootEvent": {
-        "$className": "RemoteEvent"
-      },
-      "OutcomeRemoteEvent": {
-        "$className": "RemoteEvent"
-      },
-      "WeaponSelectionEvent": {
-        "$className": "RemoteEvent"
-      },
-      "DebugLogEvent": {
-        "$className": "RemoteEvent"
-      },
-      "BossAttackEvent": {
-        "$className": "RemoteEvent"
-      },
-      "InventoryEvent": {
-        "$className": "RemoteEvent"
-      },
-      "PurchaseEvent": {
-        "$className": "RemoteEvent"
-      },
-      "RandomSeedEvent": {
-        "$className": "RemoteEvent"
-      },
-      "SpectatorStatusEvent": {
-        "$className": "RemoteEvent"
+      "$ignoreUnknownInstances": true,
+      "events": {
+        "$className": "Folder",
+        "TimerRemoteEvent": {
+          "$className": "RemoteEvent"
+        },
+        "ShootEvent": {
+          "$className": "RemoteEvent"
+        },
+        "OutcomeRemoteEvent": {
+          "$className": "RemoteEvent"
+        },
+        "WeaponSelectionEvent": {
+          "$className": "RemoteEvent"
+        },
+        "DebugLogEvent": {
+          "$className": "RemoteEvent"
+        },
+        "BossAttackEvent": {
+          "$className": "RemoteEvent"
+        },
+        "InventoryEvent": {
+          "$className": "RemoteEvent"
+        },
+        "PurchaseEvent": {
+          "$className": "RemoteEvent"
+        },
+        "RandomSeedEvent": {
+          "$className": "RemoteEvent"
+        },
+        "SpectatorStatusEvent": {
+          "$className": "RemoteEvent"
+        },
+        "MapVotingEvent": {
+          "$className": "RemoteEvent"
+        },
+        "MapVoteUpdateEvent": {
+          "$className": "RemoteEvent"
+        }
       }
     },
     "ServerScriptService": {

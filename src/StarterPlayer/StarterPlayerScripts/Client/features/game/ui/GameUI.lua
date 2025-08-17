@@ -30,6 +30,7 @@ function GameUI.init()
     TimerLabel.BorderColor3 = Color3.new(1, 1, 1)
 
     MiddleLabel = Instance.new("TextLabel")
+    print("MiddleLabel created")
     MiddleLabel.Name = "MiddleLabel"
     MiddleLabel.Parent = HUDGui
     MiddleLabel.Visible = false
