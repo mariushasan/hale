@@ -40,7 +40,7 @@ local function createDynamicCrosshair()
 	
 	-- Create ScreenGui for crosshair
 	local crosshairGui = Instance.new("ScreenGui")
-	crosshairGui.Name = "DynamicCrosshairGui"
+	crosshairGui.Name = "CrosshairGui"
 	crosshairGui.ResetOnSpawn = true
 	crosshairGui.IgnoreGuiInset = true
 	crosshairGui.Parent = playerGui
@@ -315,8 +315,7 @@ function Weapons.equip(weaponType, notifyServer)
 	if not weapon then
 		return
 	end
-	
-	weapon.equip()
+
 	Weapons.currentWeapon = weaponType
 	
 	if not Weapons.crosshair then
@@ -326,6 +325,8 @@ function Weapons.equip(weaponType, notifyServer)
 	if notifyServer then
 		weaponSelectionEvent:FireServer(weaponType)
 	end
+
+	weapon.equip()
 end
 
 return Weapons

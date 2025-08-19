@@ -19,6 +19,8 @@ local visualRig = nil
 
 -- First-person camera sync
 local cameraArmSyncConnection = nil
+local cameraModeConnection = nil
+local currentCharacter = nil
 
 -- Per-weapon fire rate tracking
 local lastFireTime = 0
@@ -117,7 +119,7 @@ local function setupCameraArmSync(character)
     
     -- Clone the character for visual rig
     visualRig = character:Clone()
-    visualRig.Name = character.Name .. "_VisualRig"
+    visualRig.Name = "VisualRig"
 
     print("VisualRig:", visualRig)
 
@@ -469,6 +471,21 @@ end
 function AssaultRifle.unequip()
     -- Clean up old animation system
     cleanupConnectionsAndAnimation()
+    
+    -- Clean up camera mode connection
+    if cameraModeConnection then
+        cameraModeConnection:Disconnect()
+        cameraModeConnection = nil
+    end
+    
+    -- Clean up camera arm sync connection
+    if cameraArmSyncConnection then
+        cameraArmSyncConnection:Disconnect()
+        cameraArmSyncConnection = nil
+    end
+    
+    -- Clear current character reference
+    currentCharacter = nil
     
     local character = Players.LocalPlayer.Character
     if character then

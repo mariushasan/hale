@@ -12,7 +12,7 @@ function GameUI.init()
     end
 
     HUDGui = Instance.new("ScreenGui")
-    HUDGui.Name = "HUDGui"
+    HUDGui.Name = "TimerGui"
     HUDGui.Parent = PlayerGui
     HUDGui.Enabled = true
 
