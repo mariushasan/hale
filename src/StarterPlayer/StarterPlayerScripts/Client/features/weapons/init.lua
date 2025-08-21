@@ -185,6 +185,8 @@ function Weapons.handleFireFromClient()
 	
 	-- Delegate complete firing logic to the individual weapon with seed and direction
 	local hits, bulletAnimations = weapon.handleFireFromClient(direction, startPosition, seed)
+
+	print(#hits)
 	
 	-- Handle bullet animations returned from weapon
 	for bulletId, bulletData in pairs(bulletAnimations) do

@@ -448,22 +448,25 @@ function weapons.init()
     end)
 
     -- Handle shooting with bullet tracking
-    ShootEvent.OnServerEvent:Connect(function(shooter, clientHits, direction, startPosition, seed)
+    ShootEvent.OnServerEvent:Connect(function(shooter, hits, direction, startPosition, seed)
         -- Get the player's selected weapon
+        print("hits")
+        print(hits)
         local weaponType = playerWeapons[shooter.UserId]
         local weaponConstants = WeaponConstants[weaponType]
         local weaponModule = getWeaponModule(weaponType)
 
-        local hits = clientHits -- Default to client hits
-
         -- Find the historical time closest to the hit position
         local firstHitPart = nil
-        for _, hit in ipairs(clientHits) do
+        for _, hit in ipairs(hits) do
             if hit.hitPart then
                 firstHitPart = hit.hitPart
                 break
             end
         end
+
+        print("firstHitPart")
+        print(firstHitPart)
 
         local targetTime = nil
 
@@ -511,6 +514,9 @@ function weapons.init()
             end
         end
 
+        print("targetTime")
+        print(targetTime)
+
         -- Rewind world state if we found a target time
         local createBulletData = {}
 
@@ -519,7 +525,7 @@ function weapons.init()
 
             -- Perform server-side validation with rewinded world state
             local shooterLagPart = getLagPart(shooter)
-            hits = weaponModule.handleFireFromServer(shooterLagPart, direction, startPosition, seed, LAG_PARTS_GROUP)
+            local hits = weaponModule.handleFireFromServer(shooterLagPart, direction, startPosition, seed, LAG_PARTS_GROUP)
 
             local damage = weaponConstants.DAMAGE_PER_BULLET or weaponConstants.DAMAGE
 
@@ -527,30 +533,13 @@ function weapons.init()
                 local hitPart = hit.hitPart
                 local hitPosition = hit.hitPosition
 
-                if not hitPart then
+                if not hitPart or not hitPosition then
                     continue
                 end
 
                 local hitPartParent = hitPart.Parent
 
-                if hitPartParent.Name:match("DummyLagPart_") then
-                    -- Extract dummy name from the parent model name (format: DummyLagPart_DummyName)
-                    local dummyName = hitPartParent.Name:match("DummyLagPart_(.+)")
-                    
-                    if dummyName then
-                        -- Find the actual dummy in the workspace
-                        local dummy = workspace:FindFirstChild(dummyName)
-                        if dummy and dummy:FindFirstChildOfClass("Humanoid") then
-                            local humanoid = dummy:FindFirstChildOfClass("Humanoid")
-                            
-                            humanoid.Health = humanoid.Health - damage
-                            
-                            -- Update leaderboard for damage dealt
-                            Leaderboard.addToStat(shooter, "Damage", damage)
-                        end
-                    end
-                elseif hitPartParent.Name:match("LagPart_") then
-                    -- Extract userId from the parent model name (format: LagPart_UserId)
+                if hitPartParent.Name:match("LagPart_") then
                     local userId = tonumber(hitPartParent.Name:match("LagPart_(-?%d+)"))
                     
                     if userId then
@@ -558,10 +547,7 @@ function weapons.init()
                         if hitPlayer and hitPlayer.Character and hitPlayer.Character:FindFirstChildOfClass("Humanoid") then
                             local humanoid = hitPlayer.Character:FindFirstChildOfClass("Humanoid")
                             
-                            -- Apply damage to the actual player's character
                             humanoid.Health = humanoid.Health - damage
-                            
-                            -- Update leaderboard for damage dealt
                             Leaderboard.addToStat(shooter, "Damage", damage)
                         end
                     end

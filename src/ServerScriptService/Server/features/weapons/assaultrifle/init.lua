@@ -145,7 +145,7 @@ function AssaultRifle.createSpreadPattern(startPosition, direction, seed)
         }},
         -- Animation direction is same as raycast direction
         animationDirection = direction,
-        animationStartPosition = startPosition
+        animationStartOffset = Vector3.new(0, 0, 0),
     }
     table.insert(bullets, bullet)
     
@@ -154,6 +154,14 @@ end
 
 -- Server-side hit validation
 function AssaultRifle.handleFireFromServer(shooterLagPart, direction, startPosition, seed, collisionGroup)
+    print("startPosition")
+    print(startPosition)
+    print("direction")
+    print(direction)
+    print("seed")
+    print(seed)
+    print("collisionGroup")
+    print(collisionGroup)
     local bullets = AssaultRifle.createSpreadPattern(startPosition, direction, seed)
     local validatedHits = {}
     
@@ -173,7 +181,6 @@ function AssaultRifle.handleFireFromServer(shooterLagPart, direction, startPosit
         local hitPart = nil
         local hitPosition = nil
         local hitRaycastData = nil
-        local hitCharacter = nil
         
         -- Try each raycast for this bullet until we get a hit
         for _, raycastData in ipairs(bullet.raycastData) do
@@ -191,40 +198,18 @@ function AssaultRifle.handleFireFromServer(shooterLagPart, direction, startPosit
                 hitPart = hitInstance
                 hitPosition = raycastResult.Position
                 hitRaycastData = raycastData
-                hitCharacter = character -- This will be nil for lag parts, but that's ok
-                bulletHit = true
+                break
             end
         end
         
-        -- Calculate max distance for animation
-        local maxDistance = AssaultRifleConstants.MAX_BULLET_DISTANCE
-        local hitVector = hitPosition and hitPosition - bullet.animationStartPosition
-        if hitVector then
-            maxDistance = hitVector.Magnitude
-        end
-        
         -- Add validated hit data
-        if bulletHit then
-            table.insert(validatedHits, {
-                id = bullet.id,
-                direction = hitRaycastData.direction,
-                startPosition = hitRaycastData.startPosition,
-                animationStartPosition = bullet.animationStartPosition,
-                animationDirection = bullet.animationDirection,
-                hitPart = hitPart,
-                hitPosition = hitPosition,
-                hitCharacter = hitCharacter,
-                maxDistance = maxDistance,
-            })
-        else
-            table.insert(validatedHits, {
-                id = bullet.id,
-                animationStartPosition = bullet.animationStartPosition,
-                animationDirection = bullet.animationDirection,
-                hitPosition = hitPosition,
-                maxDistance = maxDistance,
-            })
-        end
+        table.insert(validatedHits, {
+            id = bullet.id,
+            animationStartOffset = bullet.animationStartOffset,
+            animationDirection = bullet.animationDirection,
+            hitPart = hitPart,
+            hitPosition = hitPosition,
+        })
     end
     
     return validatedHits
