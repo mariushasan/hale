@@ -109,7 +109,7 @@ function Shotgun.handleFireFromServer(shooterLagPart, direction, startPosition, 
 		end
 		
 		-- Calculate max distance for animation
-		local maxDistance = ShotgunConstants.MAX_BULLET_DISTANCE
+		local maxDistance = ShotgunConstants.RANGE
 		local hitVector = hitPosition and hitPosition - bullet.animationStartPosition
 		if hitVector then
 			maxDistance = hitVector.Magnitude

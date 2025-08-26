@@ -168,7 +168,7 @@ function BossAttack.handleFireFromClient()
                 if bulletHit then break end -- Stop if we already hit something (only one hit per bullet)
                 
                 -- Raycast in the direction we're shooting (shorter range for melee)
-                local raycastDistance = BossAttackConstants.MAX_BULLET_DISTANCE or 10 -- Short range for melee
+                local raycastDistance = BossAttackConstants.RANGE or 10 -- Short range for melee
                 local raycastResult = workspace:Raycast(raycastData.startPosition, raycastData.direction * raycastDistance, raycastParams)
                 
                 if raycastResult and raycastResult.Instance.Parent:FindFirstChildOfClass("Humanoid") then
@@ -180,7 +180,7 @@ function BossAttack.handleFireFromClient()
             end
             
             -- Calculate max distance for animation
-            local maxDistance = BossAttackConstants.MAX_BULLET_DISTANCE
+            local maxDistance = BossAttackConstants.RANGE
             local hitVector = hitPosition and hitPosition - bullet.animationStartPosition
             if hitVector then
                 maxDistance = hitVector.Magnitude
@@ -234,7 +234,7 @@ function BossAttack.handleFireFromServer(bullets)
     local bulletAnimations = {}
     
     for _, bullet in ipairs(bullets) do
-        local maxDistance = BossAttackConstants.MAX_BULLET_DISTANCE
+        local maxDistance = BossAttackConstants.RANGE
         local hitVector = bullet.hitPosition and bullet.hitPosition - bullet.animationStartPosition
         if hitVector then
             maxDistance = hitVector.Magnitude

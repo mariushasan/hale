@@ -1,10 +1,11 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local Debris = game:GetService("Debris")
 
 local ShotgunConstants = require(ReplicatedStorage.features.weapons.shotgun.constants)
-local BulletTemplate = require(script.BulletTemplate)
 local HitGui = require(script.Parent.ui.HitGui)
+local Workspace = game:GetService("Workspace")
 
 local Shotgun = {}
 
@@ -13,17 +14,18 @@ local currentFireAnimationTrack = nil
 local transparencyConnections = {}
 local bulletCounter = 0
 
+-- Visual rig system for camera tracking
+local visualRig = nil
+
+-- First-person camera sync
+local cameraArmSyncConnection = nil
+
 -- Per-weapon fire rate tracking
 local lastFireTime = 0
-local lastMovementTime = 0 -- Track when player last moved
 
--- First person settings
-local FPS_HANDS_ENABLED = true
-local AUTO_FIRST_PERSON = false
-
--- Animation IDs
-local SHOTGUN_HOLD_ANIM_ID = "rbxassetid://77926930697734"
-local SHOTGUN_FIRE_ANIM_ID = "rbxassetid://137169236696451"
+-- Animation IDs (using shotgun animations for now)
+local ASSAULT_RIFLE_HOLD_ANIM_ID = "rbxassetid://124292358269579"
+local ASSAULT_RIFLE_FIRE_ANIM_ID = "rbxassetid://86022384403109"
 
 -- Generate unique bullet ID
 local function generateBulletId()
@@ -32,7 +34,255 @@ local function generateBulletId()
     return player.Name .. "_" .. tick() .. "_" .. bulletCounter
 end
 
-local function cleanupConnectionsAndAnimation()
+-- Function to sync arms with camera rotation in first-person
+local function setupCameraArmSync(character)
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    local rootPart = character:FindFirstChild("HumanoidRootPart")
+        
+    if not (humanoid and rootPart) then
+        return
+    end
+
+    -- Clean up any existing visual rig
+    if visualRig then
+        visualRig:Destroy()
+        visualRig = nil
+    end
+
+    -- Clone the character for visual rig
+    visualRig = character:Clone()
+    visualRig.Name = "VisualRig"
+
+    -- Make the visual rig non-collideable and completely independent
+    local visualHumanoid = visualRig:FindFirstChildOfClass("Humanoid")
+    local visualRootPart = visualRig:FindFirstChild("HumanoidRootPart")
+    
+    if not (visualHumanoid or visualRootPart) then
+        visualRig:Destroy()
+        visualRig = nil
+        return
+    end
+
+    -- Scale the visual rig to 0.7 of original size
+    visualRig:ScaleTo(0.7)
+    
+    for _, part in pairs(visualRig:GetDescendants()) do
+        if part:IsA("BasePart") then
+            part.CanCollide = false
+            part.CollisionGroup = "VisualOnly"
+        end
+    end
+
+    visualRig.Parent = workspace.CurrentCamera
+
+    -- Animation handling for custom UMPIdle animation
+    if visualHumanoid then
+        local animator = visualHumanoid:FindFirstChildOfClass("Animator")
+        if not animator then
+            animator = Instance.new("Animator")
+            animator.Parent = visualHumanoid
+        end
+        
+        -- Try to get animation from SMG model's AnimSaves first
+        local animation = Instance.new("Animation")
+        animation.AnimationId = ASSAULT_RIFLE_HOLD_ANIM_ID
+        
+        currentHoldAnimationTrack = animator:LoadAnimation(animation)
+        
+        if currentHoldAnimationTrack then
+            currentHoldAnimationTrack.Looped = true
+            currentHoldAnimationTrack.Priority = Enum.AnimationPriority.Action
+            currentHoldAnimationTrack:Play()
+        end
+
+
+        local animation = Instance.new("Animation")
+        animation.AnimationId = ASSAULT_RIFLE_FIRE_ANIM_ID
+        
+        currentFireAnimationTrack = animator:LoadAnimation(animation)
+
+        if currentFireAnimationTrack then
+            currentFireAnimationTrack.Looped = false
+        end
+    end
+
+    local cameraOffset = Vector3.new(0.7, -1, 0.5)
+
+    cameraArmSyncConnection = RunService.RenderStepped:Connect(function()
+        local camera = workspace.CurrentCamera
+        if not camera or not visualRootPart then return end
+        
+        local visualRigCFrame = camera.CFrame * CFrame.new(cameraOffset)
+        visualRootPart.CFrame = visualRigCFrame
+    end)
+end
+
+local function setupFirstPerson(character)
+    local whitelistedParts = {
+        "Left Arm", "Right Arm"
+    }
+
+    if visualRig then
+        for _, partName in ipairs(whitelistedParts) do
+            local part = visualRig:FindFirstChild(partName)
+            if part and part:IsA("BasePart") then
+                part.LocalTransparencyModifier = part.Transparency
+                transparencyConnections[partName] = part:GetPropertyChangedSignal("LocalTransparencyModifier"):Connect(function()
+                    part.LocalTransparencyModifier = part.Transparency
+                end)
+            end
+        end
+
+        local visualWeapon = visualRig:FindFirstChild("Shotgun")
+        if visualWeapon then
+            for _, part in pairs(visualWeapon:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.LocalTransparencyModifier = part.Transparency
+                    transparencyConnections[part.Name] = part:GetPropertyChangedSignal("LocalTransparencyModifier"):Connect(function()
+                        part.LocalTransparencyModifier = part.Transparency
+                    end)
+                end
+            end
+        end
+    end
+    
+    setupCameraArmSync(character)
+end
+
+-- Create a moving beam effect that travels from start to end
+local function createBeam(startPosition, endPosition)
+    local direction = (endPosition - startPosition).Unit
+    
+    -- Create small beam that will move forward
+    local beamLength = 3 -- Length of the beam in studs
+    
+    -- Create invisible parts to hold the attachments
+    local startPart = Instance.new("Part")
+    startPart.Name = "BeamStart"
+    startPart.Size = Vector3.new(0.1, 0.1, 0.1)
+    startPart.Position = startPosition
+    startPart.Anchored = true
+    startPart.CanCollide = false
+    startPart.Transparency = 1
+    startPart.Parent = workspace
+    
+    local endPart = Instance.new("Part")
+    endPart.Name = "BeamEnd"
+    endPart.Size = Vector3.new(0.1, 0.1, 0.1)
+    endPart.Position = endPosition
+    endPart.Anchored = true
+    endPart.CanCollide = false
+    endPart.Transparency = 1
+    endPart.Parent = workspace
+    
+    -- Create attachments
+    local startAttachment = Instance.new("Attachment")
+    startAttachment.Name = "BeamStart"
+    startAttachment.Parent = startPart
+    
+    local endAttachment = Instance.new("Attachment")
+    endAttachment.Name = "BeamEnd"
+    endAttachment.Parent = endPart
+    
+    -- Create the beam
+    local beam = Instance.new("Beam")
+    beam.Name = "BulletBeam"
+    beam.Color = ColorSequence.new(Color3.fromRGB(255, 165, 0)) -- Orange color for assault rifle
+    beam.Transparency = NumberSequence.new(0.1) -- Slightly transparent
+    beam.Width0 = 0.03 -- Small beam
+    beam.Width1 = 0.03 -- Consistent width
+    beam.FaceCamera = true
+    beam.LightEmission = 0.8 -- High glow for visibility
+    beam.LightInfluence = 0 -- Not affected by lighting
+    beam.Attachment0 = startAttachment
+    beam.Attachment1 = endAttachment
+    beam.Parent = startPart
+    
+    -- Animate the beam moving forward
+    return beam
+end
+
+-- Create spread pattern for assault rifle (single bullet, no spread - accuracy handled by camera shift)
+function Shotgun.createSpreadPattern(startPosition, direction)
+    local bullets = {}
+    
+    local bullet = {
+        raycastData = {{
+            direction = direction,
+            startPosition = startPosition
+        }},
+
+        animationDirection = direction,
+        animationStartOffset = Vector3.new(0, 0, 0),
+    }
+    table.insert(bullets, bullet)
+    
+    return bullets
+end
+
+function Shotgun.animateBullet(startPosition, hitPosition, hitPart, direction)    
+    local endPosition = startPosition + (direction.Unit * ShotgunConstants.RANGE)
+
+    if hitPosition then
+        endPosition = hitPosition
+    end
+
+    local maxDistance = (endPosition - startPosition).Magnitude
+    
+    local beam = createBeam(startPosition, endPosition)
+
+    Debris:AddItem(beam, 0.05)
+
+    return nil
+end
+
+function Shotgun.equip()
+    if not Players.LocalPlayer.Character then
+        return
+    end
+
+    local shotgunModel = ReplicatedStorage:FindFirstChild("models"):FindFirstChild("weapons"):FindFirstChild("Shotgun")
+    if not shotgunModel then
+        return
+    end
+
+    local originalCharacter = Players.LocalPlayer.Character
+    local originalHumanoid = originalCharacter:FindFirstChildOfClass("Humanoid")
+    
+    -- Ensure the original character has a Humanoid
+    if not originalHumanoid then
+        return
+    end
+    
+    -- Clone the SMG character model
+    local newCharacterModel = shotgunModel:Clone()
+    
+    -- Get the Humanoid from the new SMG character
+    local weaponHumanoid = newCharacterModel:FindFirstChildOfClass("Humanoid")
+    
+    if not weaponHumanoid then
+        newCharacterModel:Destroy() -- Clean up the cloned character
+        return
+    end
+
+    -- Preserve original character's clothing
+    local clothingItems = {"Shirt", "Pants", "ShirtGraphic"}
+    for _, clothingType in ipairs(clothingItems) do
+        local originalClothing = originalCharacter:FindFirstChildOfClass(clothingType)
+        if originalClothing then
+            local existingClothing = newCharacterModel:FindFirstChildOfClass(clothingType)
+            if existingClothing then
+                existingClothing:Destroy()
+            end
+            local newClothing = originalClothing:Clone()
+            newClothing.Parent = newCharacterModel
+        end
+    end
+
+    setupFirstPerson(newCharacterModel)
+end
+
+function Shotgun.unequip()
     for _, connection in pairs(transparencyConnections) do
         if connection then
             connection:Disconnect()
@@ -51,253 +301,39 @@ local function cleanupConnectionsAndAnimation()
         currentFireAnimationTrack:Destroy()
         currentFireAnimationTrack = nil
     end
-end
-
-local function setupFirstPerson(character)
-    if not FPS_HANDS_ENABLED then return end
-
-    local player = Players:GetPlayerFromCharacter(character)
-    if not player then return end
-
-    if AUTO_FIRST_PERSON then
-        player.CameraMode = Enum.CameraMode.LockFirstPerson
+    
+    -- Cleanup camera sync connection
+    if cameraArmSyncConnection then
+        cameraArmSyncConnection:Disconnect()
+        cameraArmSyncConnection = nil
     end
-
-    -- Handle R15 rig
-end
-
-local function cleanupFirstPerson(character)
-    if not FPS_HANDS_ENABLED then return end
-
-    local player = Players:GetPlayerFromCharacter(character)
-    if not player then return end
-
-    if AUTO_FIRST_PERSON then
-        player.CameraMode = Enum.CameraMode.Classic
-        player.CameraMinZoomDistance = 9.6
-        task.wait(0.02)
-        player.CameraMinZoomDistance = game:GetService("StarterPlayer").CameraMinZoomDistance
-    end
-
-    for _, connection in pairs(transparencyConnections) do
-        if connection then
-            connection:Disconnect()
-        end
-    end
-    transparencyConnections = {}
-end
-
--- Create a bullet with trail effect
-local function createBullet(startPosition, direction)
-    local bullet = BulletTemplate:Clone()
     
-    -- Simple positioning first - no orientation
-    bullet.CFrame = CFrame.new(startPosition, startPosition + direction)
-    bullet.Parent = workspace
-            
-    -- Add attachment points for trail with simple positions
-    local attachment1 = Instance.new("Attachment")
-    attachment1.Name = "TrailAttachment1"
-    attachment1.Position = Vector3.new(0.02, 0, 0)  -- Center of bullet
-    attachment1.Parent = bullet
-    
-    local attachment2 = Instance.new("Attachment")
-    attachment2.Name = "TrailAttachment2"
-    attachment2.Position = Vector3.new(-0.02, 0, 0)
-    attachment2.Parent = bullet
-    
-    -- Create trail effect with basic settings
-    local trail = Instance.new("Trail")
-    trail.Name = "BulletTrail"
-    trail.Color = ColorSequence.new(Color3.fromRGB(255, 255, 0)) -- Bright yellow for visibility
-    trail.Transparency = NumberSequence.new(0) -- Fully opaque
-    trail.Lifetime = 0.1 -- Longer lifetime
-    trail.MinLength = 0
-    trail.Enabled = true
-    trail.Attachment0 = attachment1
-    trail.Attachment1 = attachment2
-    trail.Parent = bullet
-    
-    return bullet
-end
-
--- Create spread pattern for shotgun
-function Shotgun.createSpreadPattern(startPosition, direction, seed)
-	-- Set random seed for deterministic pattern
-	math.randomseed(seed)
-	
-	local forwardVector = direction.Unit
-	local rightVector, upVector
-	
-    -- For bullets from other players, calculate right/up vectors from the provided direction
-    -- Cross product with world up vector (0,1,0) to get right vector
-    rightVector = forwardVector:Cross(Vector3.new(0, 1, 0))		
-    -- Cross product of right and forward to get up vector
-    upVector = rightVector:Cross(forwardVector).Unit
-	
-	local bullets = {}
-	
-	-- Create evenly distributed spread pattern with random variation
-	local baseDirections = {
-		{x = 0, y = 0},        -- Center
-		{x = 0.08, y = 0},     -- Right
-		{x = -0.08, y = 0},    -- Left  
-		{x = 0, y = 0.08},     -- Up
-		{x = 0, y = -0.08},    -- Down
-		{x = 0.06, y = 0.06},  -- Top-right
-		{x = -0.06, y = 0.06}, -- Top-left
-		{x = 0.06, y = -0.06}, -- Bottom-right
-		{x = -0.06, y = -0.06} -- Bottom-left
-	}
-	
-	local randomVariation = 0.03 -- Small random offset to add variety
-	
-	for i, baseDir in ipairs(baseDirections) do
-		-- Add small random variation to the base direction
-		local horizontalOffset = baseDir.x + (math.random() - 0.5) * randomVariation
-		local verticalOffset = baseDir.y + (math.random() - 0.5) * randomVariation
-		
-		-- Apply the offset to create bullet direction
-		local bulletDirection = (forwardVector + rightVector * horizontalOffset + upVector * verticalOffset).Unit
-		-- Create slightly spread start positions (simulate pellets from different parts of barrel)
-		local startPositionOffset = rightVector * (baseDir.x) + upVector * (baseDir.y)
-		local pelletStartPosition = startPosition + startPositionOffset
-		
-		-- Each shotgun pellet is a separate bullet with one raycast each
-		local bullet = {
-			-- Single raycast per bullet (shotgun pellets)
-			raycastData = {{
-				direction = bulletDirection,
-				startPosition = pelletStartPosition
-			}},
-			-- Animation direction is same as raycast direction
-			animationDirection = bulletDirection,
-			animationStartPosition = pelletStartPosition
-		}
-		table.insert(bullets, bullet)
-	end
-    
-    return bullets
-end
-
-function Shotgun.animateBullet(startPosition, direction, maxDistance)
-	-- Create bullets for each direction
-    local bulletPart = createBullet(startPosition, direction)
-
-    local bullet = {
-        part = bulletPart,
-        direction = direction.Unit,
-        startTime = tick(),
-        startPosition = startPosition,
-    }
-    
-    -- Store the initial CFrame rotation to avoid precision issues
-    local initialCFrame = CFrame.new(bullet.startPosition, bullet.startPosition + bullet.direction)
-	
-	-- Return update function for all bullets
-	return function(deltaTime)
-		local currentTime = tick()
-        
-        -- Check if bullet still exists
-        local elapsedTime = currentTime - bullet.startTime
-        local distance = 300 * elapsedTime
-        
-        -- Move bullet
-        local newPosition = bullet.startPosition + (bullet.direction * distance)
-        bullet.part.Position = newPosition
-        -- Remove bullet if it has traveled too far
-        if distance > maxDistance then
-            bullet.part:Destroy()
-            return false
-        end
-
-        return true
-	end
-end
-
-function Shotgun.equip()
-    cleanupConnectionsAndAnimation()
-    
-    local character = Players.LocalPlayer.Character
-    if not character then return end
-
-    -- Use shared handler for instant model equipping
-
-    local humanoid = character:FindFirstChildOfClass("Humanoid")
-    local animator = humanoid and humanoid:FindFirstChildOfClass("Animator")
-    if not (humanoid and animator) then
-        return
-    end
-
-    -- Load both animations
-    local holdAnimation = Instance.new("Animation")
-    holdAnimation.AnimationId = SHOTGUN_HOLD_ANIM_ID
-    currentHoldAnimationTrack = animator:LoadAnimation(holdAnimation)
-    holdAnimation:Destroy()
-
-    local fireAnimation = Instance.new("Animation")
-    fireAnimation.AnimationId = SHOTGUN_FIRE_ANIM_ID
-    currentFireAnimationTrack = animator:LoadAnimation(fireAnimation)
-    fireAnimation:Destroy()
-
-    if currentHoldAnimationTrack then
-        currentHoldAnimationTrack.Priority = Enum.AnimationPriority.Action
-        currentHoldAnimationTrack.Looped = true
-        currentHoldAnimationTrack:Play()
-    end
-
-    -- Setup first person view
-    setupFirstPerson(character)
-end
-
-function Shotgun.unequip()
-    cleanupConnectionsAndAnimation()
-    
-    local character = Players.LocalPlayer.Character
-    if character then
-        -- Remove shotgun model if it exists
-        local shotgunModel = character:FindFirstChild("shotgun")
-        if shotgunModel then
-            shotgunModel:Destroy()
-        end
-        cleanupFirstPerson(character)
+    -- Cleanup visual rig
+    if visualRig then
+        visualRig:Destroy()
+        visualRig = nil
     end
 end
 
-function Shotgun.animateFire()    
-    -- Play the fire animation if it exists
-    if currentFireAnimationTrack then
-        currentFireAnimationTrack:Play()
-        
-        local startTime = tick()
-        
-        -- Wait for the animation to finish
-        currentFireAnimationTrack.Stopped:Wait()
-        
-        -- Resume the hold animation
-        if currentHoldAnimationTrack then
-            currentHoldAnimationTrack:Play()
-        end
-    else
-        warn("Shotgun fire animation track not loaded")
-    end
-end
-
-function Shotgun.handleFireFromClient(direction, startPosition, seed)
-    local Players = game:GetService("Players")
+function Shotgun.handleFireFromClient()
     local player = Players.LocalPlayer
     
     -- Check fire rate
     local currentTime = tick()
-    local fireRate = ShotgunConstants.FIRE_COOLDOWN or 0.5
+    local fireRate = ShotgunConstants.FIRE_COOLDOWN
     if not (currentTime - lastFireTime >= fireRate) then
-        return {}, {} -- Return empty hits and bullets
+        return {}, {}
     end
     
     lastFireTime = currentTime
     
-    -- Use provided direction and startPosition
-    local bullets = Shotgun.createSpreadPattern(startPosition, direction, seed)
+    -- Calculate local firing parameters
+    local camera = workspace.CurrentCamera
+    if not camera then
+        return {}, {}
+    end
+    
+    local bullets = Shotgun.createSpreadPattern(camera.CFrame.Position, camera.CFrame.LookVector)
     
     -- Assign bullet IDs
     for _, bullet in ipairs(bullets) do
@@ -306,111 +342,81 @@ function Shotgun.handleFireFromClient(direction, startPosition, seed)
     
     local hits = {}
     local bulletAnimations = {}
+
+    local bulletStart = visualRig:FindFirstChild("BulletStart", true)
+    local bulletStartPosition = bulletStart and bulletStart.WorldPosition
     
     for _, bullet in ipairs(bullets) do
         -- Check if this is a local firing (bullet ID starts with local player's name)
         if bullet.id and bullet.id:find("^" .. player.Name .. "_") then
             -- Perform client-side raycasts for this bullet
+            local camera = workspace.CurrentCamera
             local raycastParams = RaycastParams.new()
             raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
             raycastParams.FilterDescendantsInstances = {player.Character}
             raycastParams.CollisionGroup = "PlayerCharacters"
-            
-            local bulletHit = false
-            local hitPart = nil
+
             local hitPosition = nil
-            local hitRaycastData = nil -- Store which raycast actually hit
             
             -- Try each raycast for this bullet until we get a hit
-            for _, raycastData in ipairs(bullet.raycastData) do
-                if bulletHit then break end -- Stop if we already hit something
-                
+            for _, raycastData in ipairs(bullet.raycastData) do                
                 -- Raycast in the direction we're shooting
-                local raycastDistance = 1000 -- Max shooting distance
+                local raycastDistance = ShotgunConstants.RANGE -- Max shooting distance
                 local raycastResult = workspace:Raycast(raycastData.startPosition, raycastData.direction * raycastDistance, raycastParams)
                 
-                if raycastResult and raycastResult.Instance.Parent:FindFirstChildOfClass("Humanoid") then
-                    hitPart = raycastResult.Instance
+                if raycastResult then
                     hitPosition = raycastResult.Position
-                    hitRaycastData = raycastData -- Store the raycast data that hit
-                    bulletHit = true -- Mark that this bullet hit something
+                    table.insert(hits, {
+                        hitPart = raycastResult.Instance,
+                        hitPosition = raycastResult.Position,
+                    })
+                    break
                 end
             end
             
-            -- Calculate max distance for animation
-            local maxDistance = ShotgunConstants.MAX_BULLET_DISTANCE
-            local hitVector = hitPosition and hitPosition - bullet.animationStartPosition
-            if hitVector then
-                maxDistance = hitVector.Magnitude
-            end
-            
-            -- Create bullet animation
-            local updateBullet = Shotgun.animateBullet(bullet.animationStartPosition, bullet.animationDirection, maxDistance)
-            if updateBullet then
-                bulletAnimations[bullet.id] = {
-                    update = updateBullet
-                }
-            end
-            
-            -- Only add hit data if we actually hit something
-            if bulletHit then
-                table.insert(hits, {
-                    id = bullet.id,
-                    direction = hitRaycastData.direction, -- Use the actual raycast direction that hit
-                    startPosition = hitRaycastData.startPosition, -- Use the actual raycast start position that hit
-                    animationStartPosition = bullet.animationStartPosition,
-                    animationDirection = bullet.animationDirection,
-                    hitPart = hitPart,
-                    hitPosition = hitPosition,
-                    maxDistance = maxDistance,
-                })
-                local humanoid = hitPart.Parent:FindFirstChildOfClass("Humanoid")
-                if humanoid then
-                    humanoid:TakeDamage(ShotgunConstants.DAMAGE_PER_BULLET)
-                end
-            else
-                table.insert(hits, {
-                    id = bullet.id,
-                    animationStartPosition = bullet.animationStartPosition,
-                    animationDirection = bullet.animationDirection,
-                    hitPosition = hitPosition,
-                    maxDistance = maxDistance,
-                })
-            end
+            -- Create bullet animation (beam automatically cleans up)
+            local updateFunction = Shotgun.animateBullet(bulletStartPosition + bullet.animationStartOffset, hitPosition, hitPart, bullet.animationDirection)
+            bulletAnimations[bullet.id] = {
+                update = updateFunction,
+            }
         end
     end
     
-    -- Handle damage display for shotgun
     if #hits > 0 then
         local avgHitPosition, validHits = HitGui.calculateAverageHitPosition(hits)
         if avgHitPosition and validHits > 0 then
-            local totalDamage = validHits * ShotgunConstants.DAMAGE_PER_BULLET
+            local totalDamage = validHits * ShotgunConstants.DAMAGE_PER_HIT
             HitGui.showDamageNumber(totalDamage, avgHitPosition)
         end
     end
-    
+
+    if currentFireAnimationTrack then
+        currentFireAnimationTrack:Play()
+    end
+
     return hits, bulletAnimations
 end
 
-function Shotgun.handleFireFromServer(bullets)
+function Shotgun.handleFireFromServer(shooter, bullets)
     local bulletAnimations = {}
+
+    local shooterCharacter = shooter.Character
+
+    if not shooterCharacter then
+        return bulletAnimations
+    end
+
+    local bulletStart = shooterCharacter:FindFirstChild("BulletStart", true)
+    local bulletStartPosition = bulletStart and bulletStart.WorldPosition
     
     for _, bullet in ipairs(bullets) do
-        local maxDistance = ShotgunConstants.MAX_BULLET_DISTANCE
-        local hitVector = bullet.hitPosition and bullet.hitPosition - bullet.animationStartPosition
-        if hitVector then
-            maxDistance = hitVector.Magnitude
-        end
-
-        local updateBullet = Shotgun.animateBullet(bullet.animationStartPosition, bullet.animationDirection, maxDistance)
-        if updateBullet then
-            bulletAnimations[bullet.id] = {
-                update = updateBullet
-            }
-        end
+        local updateFunction = Shotgun.animateBullet(bulletStartPosition + bullet.animationStartOffset, bullet.hitPosition, bullet.hitPart, bullet.animationDirection)
+        bulletAnimations[bullet.id] = {
+            update = updateFunction,
+        }
     end
     
     return bulletAnimations
 end
 
-return Shotgun 
+return Shotgun

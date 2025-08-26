@@ -9,7 +9,6 @@ local Loadout = require(game.StarterPlayer.StarterPlayerScripts.Client.features.
 
 Shop.init()
 Weapons.init()
-print("Weapons initialized")
 Game.init()
 Inventory.init()
 LogViewer.init()

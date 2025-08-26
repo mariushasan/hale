@@ -340,7 +340,7 @@ local function createWeaponDetails(parent, constants)
     local damageLabel = Instance.new("TextLabel")
     damageLabel.Name = "DamageLabel"
     damageLabel.BackgroundTransparency = 1
-    damageLabel.Text = "💥 Damage: " .. (constants.DAMAGE_PER_BULLET or "N/A") .. " per pellet"
+    damageLabel.Text = "💥 Damage: " .. (constants.DAMAGE_PER_HIT or "N/A") .. " per pellet"
     damageLabel.TextColor3 = Color3.fromRGB(255, 150, 150)
     damageLabel.Font = Enum.Font.Gotham
     damageLabel.TextXAlignment = Enum.TextXAlignment.Center

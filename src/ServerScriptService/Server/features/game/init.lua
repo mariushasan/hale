@@ -9,6 +9,7 @@ local Spectator = require(game.ServerScriptService.Server.features.spectator)
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local events = ReplicatedStorage:WaitForChild("events")
 local TimerRemoteEvent = events:WaitForChild("TimerRemoteEvent")
+local GameUIReadyEvent = events:WaitForChild("GameUIReadyEvent")
 local OutcomeRemoteEvent = events:WaitForChild("OutcomeRemoteEvent")
 local Players = game:GetService("Players")
 
@@ -22,12 +23,13 @@ local spectatorStatusEvent = events:WaitForChild("SpectatorStatusEvent")
 local TESTING = false
 local MINUTE = 60
 local GAME_TIME = 60
-local WAITING_TIME = 3
+local VOTING_TIME = 3
 local DEBOUNCE = 3
 local PLAYER_THRESHOLD = 1
 local states = {
 	PLAYING = "PLAYING",
 	END = "END",
+	VOTING = "VOTING",
 }
 
 -- Local properties
@@ -36,6 +38,7 @@ local playersInArena = {}
 local gameTimerTask = nil
 local waitingMonitorTask = nil
 local state = states.END
+local currentWaitingTime = 0
 
 -- Define the Game object
 local Game = {}
@@ -55,9 +58,20 @@ local function startPlayerMonitoring()
 				-- Start game if we have enough players
 				if waitingPlayerCount >= PLAYER_THRESHOLD and state == states.END then
 					waitingMonitorTask = nil
-					TimerRemoteEvent:FireAllClients(WAITING_TIME)
+					state = states.VOTING
+					TimerRemoteEvent:FireAllClients(VOTING_TIME)
+
+					currentWaitingTime = VOTING_TIME
+
+					task.spawn(function()
+						while currentWaitingTime < VOTING_TIME do
+							task.wait(1)
+							currentWaitingTime = currentWaitingTime - 1
+						end
+					end)
+
 					-- Start map voting and get the winning map
-					local winningMap = MapVoting.startVoting(WAITING_TIME)
+					local winningMap = MapVoting.startVoting(VOTING_TIME)
 					
 					-- Load the winning map before starting the game
 					print("winningMap", winningMap)
@@ -93,9 +107,6 @@ function startGame()
 			player:LoadCharacter()
 		end
 	end
-	
-	-- Wait a moment for characters to load
-	task.wait(1)
 
 	-- Team assignment logic
 	Teams.assignTeams(playersWaiting)
@@ -119,6 +130,9 @@ function startGame()
 		return
 	end
 
+	-- Wait a moment for characters to load
+	task.wait(1)
+
 	-- Equip boss attack weapon (handles both server transformation and client notification)
 	Weapons.equipPlayerWeapon(bossPlayer, "bossattack")
 
@@ -126,9 +140,6 @@ function startGame()
 		table.insert(playersInArena, player)
 		playersWaiting[player.UserId] = nil
 	end
-
-	-- Synchronize random seed with all clients for deterministic spread patterns
-	local RandomSeedEvent = events:WaitForChild("RandomSeedEvent")
 
 	-- Start the game timer
 	TimerRemoteEvent:FireAllClients(GAME_TIME)
@@ -163,7 +174,7 @@ function endGame()
 
 	-- Teleport players back to the waiting room
 
-	TimerRemoteEvent:FireAllClients(WAITING_TIME)
+	TimerRemoteEvent:FireAllClients(VOTING_TIME)
 					
 	-- Start monitoring for enough players instead of auto-starting
 	startPlayerMonitoring()
@@ -183,6 +194,12 @@ end
 
 -- Event listeners
 function Game.init()
+	GameUIReadyEvent.OnServerEvent:Connect(function(player)
+		if state == states.VOTING then
+			TimerRemoteEvent:FireClient(player, currentWaitingTime)
+		end
+	end)
+
 	Teams.init()
 
 	local allPlayers = Players:GetPlayers()

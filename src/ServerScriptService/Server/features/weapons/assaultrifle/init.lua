@@ -7,6 +7,7 @@ local Workspace = game:GetService("Workspace")
 
 -- Store original character models for restoration
 local currentAnimationTracks = {} -- [userId] = animationTrack
+local gunStates = {} -- [userId] = {clips = number, ammo = number, reloading = boolean}
 
 -- Equip method - replaces player's character with SMG character temporarily
 function AssaultRifle.equip(player)
@@ -16,7 +17,7 @@ function AssaultRifle.equip(player)
     end
 
     -- Get the SMG model from ReplicatedStorage (or ServerStorage if preferred)
-    local smgModel = ReplicatedStorage:FindFirstChild("models"):FindFirstChild("weapons"):FindFirstChild("SMG")
+    local smgModel = ReplicatedStorage:FindFirstChild("models"):FindFirstChild("weapons"):FindFirstChild("AssaultRifle")
     if not smgModel then
         return
     end
@@ -153,15 +154,32 @@ function AssaultRifle.createSpreadPattern(startPosition, direction, seed)
 end
 
 -- Server-side hit validation
-function AssaultRifle.handleFireFromServer(shooterLagPart, direction, startPosition, seed, collisionGroup)
-    print("startPosition")
-    print(startPosition)
-    print("direction")
-    print(direction)
-    print("seed")
-    print(seed)
-    print("collisionGroup")
-    print(collisionGroup)
+function AssaultRifle.handleFireFromServer(player, shooterLagPart, direction, startPosition, seed, collisionGroup)
+    if not gunStates[player.UserId] then
+        gunStates[player.UserId] = {
+            clips = AssaultRifleConstants.STARTING_CLIPS,
+            ammo = AssaultRifleConstants.CLIP_SIZE,
+            reloading = false
+        }
+    end
+
+    if (gunStates[player.UserId].ammo <= 0 and gunStates[player.UserId].clips <= 0) or gunStates[player.UserId].reloading then
+        return
+    end
+
+    if gunStates[player.UserId].ammo <= 0 then
+        gunStates[player.UserId].reloading = true
+        task.spawn(function()
+            wait(AssaultRifleConstants.RELOAD_TIME)
+            gunStates[player.UserId].ammo = AssaultRifleConstants.CLIP_SIZE
+            gunStates[player.UserId].clips = gunStates[player.UserId].clips - 1
+            gunStates[player.UserId].reloading = false
+        end)
+        return
+    end
+
+    gunStates[player.UserId].ammo = gunStates[player.UserId].ammo - 1
+
     local bullets = AssaultRifle.createSpreadPattern(startPosition, direction, seed)
     local validatedHits = {}
     
@@ -187,7 +205,7 @@ function AssaultRifle.handleFireFromServer(shooterLagPart, direction, startPosit
             if bulletHit then break end
             
             -- Raycast in the direction we're shooting
-            local raycastDistance = 1000 -- Max shooting distance
+            local raycastDistance = AssaultRifleConstants.RANGE -- Max shooting distance
             local raycastResult = workspace:Raycast(raycastData.startPosition, raycastData.direction * raycastDistance, raycastParams)
             
             if raycastResult then

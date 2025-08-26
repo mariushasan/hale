@@ -6,7 +6,7 @@ local AssaultRifleConstants = require(script.assaultrifle.constants)
 local WeaponConstants = {
     shotgun = ShotgunConstants,
     bossattack = BossAttackConstants,
-    assaultrifle = AssaultRifleConstants,
+    AssaultRifle = AssaultRifleConstants,
 }
 
 return WeaponConstants 

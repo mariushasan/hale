@@ -45,23 +45,6 @@ local Inventory = {}
 -- Player data cache
 local playerData = {}
 
--- Available items for purchase
-local SHOP_ITEMS = {
-    shotgun = {
-        id = "shotgun",
-        price = WeaponConstants.shotgun.PRICE,
-        name = WeaponConstants.shotgun.DISPLAY_NAME,
-        category = "weapon"
-    },
-    assaultrifle = {
-        id = "assaultrifle",
-        price = WeaponConstants.assaultrifle.PRICE,
-        name = WeaponConstants.assaultrifle.DISPLAY_NAME,
-        category = "weapon"
-    },
-    -- Add more items here as they become available
-}
-
 -- Default player data structure
 local function createDefaultPlayerData()
     return {
@@ -255,7 +238,7 @@ local function handlePurchase(player, itemId)
     -- Debug player data status
     debugPlayerData(player)
     
-    local item = SHOP_ITEMS[itemId]
+    local item = WeaponConstants[itemId]
     if not item then
         print("❌ Item not found:", itemId)
         PurchaseEvent:FireClient(player, {
@@ -287,9 +270,7 @@ local function handlePurchase(player, itemId)
             print("✅ Player data loaded after retry")
         end
     end
-    
-    print("💰 Player", player.Name, "has", data.coins, "coins, item costs", item.price)
-    
+        
     -- Check if player already owns the item
     if playerOwnsItem(player, itemId) then
         print("❌ Player", player.Name, "already owns", itemId)
@@ -301,8 +282,7 @@ local function handlePurchase(player, itemId)
     end
     
     -- Check if player has enough coins
-    if data.coins < item.price then
-        print("❌ Player", player.Name, "has insufficient coins:", data.coins, "< required:", item.price)
+    if data.coins < item.PRICE then
         PurchaseEvent:FireClient(player, {
             success = false,
             error = "Not enough coins"
@@ -311,20 +291,18 @@ local function handlePurchase(player, itemId)
     end
     
     -- Process purchase
-    if removeCoins(player, item.price) and addItemToInventory(player, itemId) then
+    if removeCoins(player, item.PRICE) and addItemToInventory(player, itemId) then
         -- Add to purchase history
         table.insert(data.purchaseHistory, {
             itemId = itemId,
-            price = item.price,
+            price = item.PRICE,
             purchaseTime = os.time()
         })
-        
-        print("✅ Purchase successful!", player.Name, "bought", item.name, "for", item.price, "coins. Remaining:", data.coins)
-        
+                
         PurchaseEvent:FireClient(player, {
             success = true,
             itemId = itemId,
-            itemName = item.name,
+            itemName = item.DISPLAY_NAME,
             coinsRemaining = data.coins
         })
         

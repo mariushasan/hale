@@ -42,6 +42,12 @@
         },
         "MapVoteUpdateEvent": {
           "$className": "RemoteEvent"
+        },
+        "MapVotingUIReadyEvent": {
+          "$className": "RemoteEvent"
+        },
+        "GameUIReadyEvent": {
+          "$className": "RemoteEvent"
         }
       }
     },

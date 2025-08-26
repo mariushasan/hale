@@ -98,7 +98,7 @@ function HitGui.calculateAverageHitPosition(hits)
 	local validHits = 0
 	
 	for _, hit in ipairs(hits) do
-		if hit.hitPosition then
+		if hit.hitPosition and hit.hitPart.Parent:FindFirstChildOfClass("Humanoid") then
 			avgHitPosition = avgHitPosition + hit.hitPosition
 			validHits = validHits + 1
 		end

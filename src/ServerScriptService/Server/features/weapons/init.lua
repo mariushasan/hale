@@ -49,7 +49,7 @@ local function getWeaponModule(weaponType)
         return BossAttackModule
     elseif weaponType == "shotgun" then
         return ShotgunModule
-    elseif weaponType == "assaultrifle" then
+    elseif weaponType == "AssaultRifle" then
         return AssaultRifleModule
     else
         return nil -- No server-side logic needed
@@ -442,6 +442,8 @@ function weapons.init()
 
         -- Equip new weapon's server-side logic
         local newServerModule = getWeaponModule(weaponType)
+        print("newServerModule")
+        print(newServerModule)
         if newServerModule and newServerModule.equip then
             newServerModule.equip(player)
         end
@@ -449,9 +451,6 @@ function weapons.init()
 
     -- Handle shooting with bullet tracking
     ShootEvent.OnServerEvent:Connect(function(shooter, hits, direction, startPosition, seed)
-        -- Get the player's selected weapon
-        print("hits")
-        print(hits)
         local weaponType = playerWeapons[shooter.UserId]
         local weaponConstants = WeaponConstants[weaponType]
         local weaponModule = getWeaponModule(weaponType)
@@ -465,16 +464,22 @@ function weapons.init()
             end
         end
 
-        print("firstHitPart")
-        print(firstHitPart)
-
         local targetTime = nil
 
         if firstHitPart then
             local bestMetric = math.huge
             -- Determine whether we hit a player or a dummy
             local hitCharacter = firstHitPart.Parent
-            local firstHitCFrame = (hitCharacter.PrimaryPart and hitCharacter.PrimaryPart.CFrame) or firstHitPart.CFrame
+            local firstHitCFrame = nil
+
+            if hitCharacter:IsA("Model") and hitCharacter.PrimaryPart then
+                firstHitCFrame = hitCharacter.PrimaryPart.CFrame
+            else
+                firstHitCFrame = firstHitPart.CFrame
+            end
+
+            print("firstHitCFrame")
+            print(firstHitCFrame)
 
             local hitPlayer = Players:GetPlayerFromCharacter(hitCharacter)
             local targetUserId = nil
@@ -514,9 +519,6 @@ function weapons.init()
             end
         end
 
-        print("targetTime")
-        print(targetTime)
-
         -- Rewind world state if we found a target time
         local createBulletData = {}
 
@@ -525,9 +527,9 @@ function weapons.init()
 
             -- Perform server-side validation with rewinded world state
             local shooterLagPart = getLagPart(shooter)
-            local hits = weaponModule.handleFireFromServer(shooterLagPart, direction, startPosition, seed, LAG_PARTS_GROUP)
+            local hits = weaponModule.handleFireFromServer(shooter, shooterLagPart, direction, startPosition, seed, LAG_PARTS_GROUP)
 
-            local damage = weaponConstants.DAMAGE_PER_BULLET or weaponConstants.DAMAGE
+            local damage = weaponConstants.DAMAGE_PER_HIT
 
             for _, hit in ipairs(hits) do
                 local hitPart = hit.hitPart
@@ -556,9 +558,10 @@ function weapons.init()
                 table.insert(createBulletData,
                 {
                     id = hit.id,
-                    animationStartPosition = hit.animationStartPosition,
+                    animationStartOffset = hit.animationStartOffset,
                     animationDirection = hit.animationDirection,
                     hitPosition = hit.hitPosition,
+                    hitPart = hit.hitPart,
                 })
             end
         end
@@ -569,7 +572,8 @@ function weapons.init()
                 ShootEvent:FireClient(player, {
                     action = "create",
                     weaponType = weaponType,
-                    bullets = createBulletData
+                    bullets = createBulletData,
+                    shooter = shooter,
                 })
             end
         end

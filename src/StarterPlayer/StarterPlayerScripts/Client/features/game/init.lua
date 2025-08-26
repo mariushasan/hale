@@ -2,6 +2,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local events = ReplicatedStorage:WaitForChild("events")
 local TimerRemoteEvent = events:WaitForChild("TimerRemoteEvent")
 local OutcomeRemoteEvent = events:WaitForChild("OutcomeRemoteEvent")
+local GameUIReadyEvent = events:WaitForChild("GameUIReadyEvent")
 local GameUI = require(game.StarterPlayer.StarterPlayerScripts.Client.features.game.ui.GameUI)
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
@@ -200,9 +201,9 @@ function Game.init()
         GameUI.showGameEnd(outcome)
     end)
 
-    Players.LocalPlayer.CharacterAdded:Connect(function()
-        GameUI.init()
-    end)
+    GameUI.init()
+
+    GameUIReadyEvent:FireServer()
     
     -- Create the menu system
     menuIconGui = createMenuSystem()

@@ -1,48 +1,48 @@
 local GameUI = {}
 
-local LocalPlayer = game.Players.LocalPlayer
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
-local HUDGui = nil
-local TimerLabel = nil
-local MiddleLabel = nil
+local localPlayer = game.Players.LocalPlayer
+local playerGui = localPlayer:WaitForChild("PlayerGui")
+local gameGui = nil
+local timerLabel = nil
+local middleLabel = nil
 
-function GameUI.init()
-    if HUDGui and HUDGui.Parent then
+function GameUI.create()
+    if gameGui and gameGui.Parent then
         return
     end
 
-    HUDGui = Instance.new("ScreenGui")
-    HUDGui.Name = "TimerGui"
-    HUDGui.Parent = PlayerGui
-    HUDGui.Enabled = true
+    gameGui = Instance.new("ScreenGui")
+    gameGui.Name = "GameGui"
+    gameGui.ResetOnSpawn = false
+    gameGui.Parent = playerGui
+    gameGui.Enabled = true
 
-    TimerLabel = Instance.new("TextLabel")
-    TimerLabel.Name = "TimerLabel"
-    TimerLabel.Parent = HUDGui
-    TimerLabel.Position = UDim2.new(1, -110, 1, -60)
-    TimerLabel.Size = UDim2.new(0, 100, 0, 50)
-    TimerLabel.Text = "00:00"
-    TimerLabel.TextSize = 24
-    TimerLabel.TextColor3 = Color3.new(1, 1, 1)
-    TimerLabel.BackgroundTransparency = 0
-    TimerLabel.BackgroundColor3 = Color3.new(0.501960, 0.733333, 1)
-    TimerLabel.BorderSizePixel = 5
-    TimerLabel.BorderColor3 = Color3.new(1, 1, 1)
+    timerLabel = Instance.new("TextLabel")
+    timerLabel.Name = "TimerLabel"
+    timerLabel.Parent = gameGui
+    timerLabel.Position = UDim2.new(1, -110, 1, -60)
+    timerLabel.Size = UDim2.new(0, 100, 0, 50)
+    timerLabel.Text = "00:00"
+    timerLabel.TextSize = 24
+    timerLabel.TextColor3 = Color3.new(1, 1, 1)
+    timerLabel.BackgroundTransparency = 0
+    timerLabel.BackgroundColor3 = Color3.new(0.501960, 0.733333, 1)
+    timerLabel.BorderSizePixel = 5
+    timerLabel.BorderColor3 = Color3.new(1, 1, 1)
 
-    MiddleLabel = Instance.new("TextLabel")
-    print("MiddleLabel created")
-    MiddleLabel.Name = "MiddleLabel"
-    MiddleLabel.Parent = HUDGui
-    MiddleLabel.Visible = false
-    MiddleLabel.TextSize = 120
-    MiddleLabel.TextColor3 = Color3.new(1, 1, 1)
-    MiddleLabel.BackgroundTransparency = 1
-    MiddleLabel.BorderSizePixel = 0
-    MiddleLabel.ZIndex = 2 
-    MiddleLabel.Size = UDim2.new(0, 280, 0, 140)
-    MiddleLabel.AnchorPoint = Vector2.new(0.5, 0.5)
-    MiddleLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
-    MiddleLabel.Font = Enum.Font.SourceSansBold
+    middleLabel = Instance.new("TextLabel")
+    middleLabel.Name = "MiddleLabel"
+    middleLabel.Parent = gameGui
+    middleLabel.Visible = false
+    middleLabel.TextSize = 120
+    middleLabel.TextColor3 = Color3.new(1, 1, 1)
+    middleLabel.BackgroundTransparency = 1
+    middleLabel.BorderSizePixel = 0
+    middleLabel.ZIndex = 2 
+    middleLabel.Size = UDim2.new(0, 280, 0, 140)
+    middleLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+    middleLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
+    middleLabel.Font = Enum.Font.SourceSansBold
 end
 
 local function formatTime(seconds)
@@ -59,55 +59,59 @@ function GameUI.showGameEnd(outcome)
     end
 
     if outcome == "Victory" then
-        MiddleLabel.Text = "Victory!"
-        MiddleLabel.TextColor3 = Color3.fromRGB(0, 128, 0)
+        middleLabel.Text = "Victory!"
+        middleLabel.TextColor3 = Color3.fromRGB(0, 128, 0)
     elseif outcome == "Draw" then
-        MiddleLabel.Text = "Draw"
-        MiddleLabel.TextColor3 = Color3.fromRGB(49, 49, 49)
+        middleLabel.Text = "Draw"
+        middleLabel.TextColor3 = Color3.fromRGB(49, 49, 49)
     else
-        MiddleLabel.Text = "Defeat"
-        MiddleLabel.TextColor3 = Color3.fromRGB(128, 0, 0)
+        middleLabel.Text = "Defeat"
+        middleLabel.TextColor3 = Color3.fromRGB(128, 0, 0)
     end
-    MiddleLabel.Visible = true
+    middleLabel.Visible = true
 
-    task.delay(6, function()
-        MiddleLabel.Visible = false
+    task.delay(5, function()
+        middleLabel.Visible = false
     end)
 end
 
 function GameUI.setTimer(seconds)
-    MiddleLabel.Visible = false
+    middleLabel.Visible = false
 
     if currentTimerTask then
         task.cancel(currentTimerTask)
     end
 
     local localseconds = seconds
-    if TimerLabel then
-        TimerLabel.Text = formatTime(seconds)
+    if timerLabel then
+        timerLabel.Text = formatTime(seconds)
     end
 
     currentTimerTask = task.spawn(function()
         while localseconds > 0 do
             localseconds = localseconds - 1
 
-            if TimerLabel then
-                TimerLabel.Text = formatTime(localseconds)
+            if timerLabel then
+                timerLabel.Text = formatTime(localseconds)
             end
 
-            if LocalPlayer.Team.Name == "Waiting" then
+            if localPlayer.Team.Name == "Waiting" then
                 if localseconds <= 10 then
-                    MiddleLabel.Text = localseconds
+                    middleLabel.Text = localseconds
                 end
 
                 if localseconds == 10 then
-                    MiddleLabel.Visible = true
+                    middleLabel.Visible = true
                 end
             end
             task.wait(1)
         end
-        MiddleLabel.Visible = false
+        middleLabel.Visible = false
     end)
+end
+
+function GameUI.init()
+    gameGui = GameUI.create()
 end
 
 return GameUI

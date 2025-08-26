@@ -11,7 +11,7 @@ local ShotgunConstants = {
     BULLET_SPEED = 100, -- studs per second
     BULLET_SIZE = Vector3.new(0.3, 0.3, 0.3),
     BULLET_COLOR = Color3.fromRGB(200, 200, 200),
-    MAX_BULLET_DISTANCE = 1000, -- Maximum distance a bullet can travel before being removed
+    RANGE = 1000, -- Maximum distance a bullet can travel before being removed
     
     -- Shot Properties
     BULLETS_PER_SHOT = 8,

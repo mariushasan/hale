@@ -9,6 +9,7 @@ local MapConstants = require(ReplicatedStorage.features.maps)
 -- Remote Events
 local MapVotingEvent = events:WaitForChild("MapVotingEvent")
 local MapVoteUpdateEvent = events:WaitForChild("MapVoteUpdateEvent")
+local MapVotingUIReadyEvent = events:WaitForChild("MapVotingUIReadyEvent")
 
 local MapVoting = {}
 
@@ -17,6 +18,7 @@ local votingActive = false
 local playerVotes = {} -- [player] = mapId
 local mapVotes = {} -- [mapId] = count
 local votingEndTime = 0
+local currentVotingTime = 0
 
 -- Initialize vote counts
 local function initializeVoteCounts()
@@ -92,12 +94,21 @@ function MapVoting.startVoting(duration)
     
     print("Starting map voting for " .. duration .. " seconds")
     
-    votingActive = true
     playerVotes = {}
     initializeVoteCounts()
     votingEndTime = tick() + duration
     
     -- Notify all clients that voting has started
+    currentVotingTime = duration
+
+    task.spawn(function()
+        while currentVotingTime < duration do
+            task.wait(1)
+            currentVotingTime = currentVotingTime - 1
+        end
+    end)
+    
+    votingActive = true
     MapVotingEvent:FireAllClients("start", duration)
     broadcastVoteUpdate()
     
@@ -178,6 +189,13 @@ end
 -- Initialize the system
 function MapVoting.init()
     initializeVoteCounts()
+
+    MapVotingUIReadyEvent.OnServerEvent:Connect(function(player)
+        if votingActive then
+            MapVotingEvent:FireClient(player, "start", currentVotingTime)
+            MapVoteUpdateEvent:FireClient(player, mapVotes)
+        end
+    end)
     
     -- Handle player votes
     MapVotingEvent.OnServerEvent:Connect(function(player, action, data)
@@ -197,19 +215,6 @@ function MapVoting.init()
             playerVotes[player] = nil
             broadcastVoteUpdate()
         end
-    end)
-    
-    print("MapVoting system initialized")
-    
-    -- Test command for starting voting (remove in production)
-    game.Players.PlayerAdded:Connect(function(player)
-        player.Chatted:Connect(function(message)
-            if message:lower() == "/startvote" then
-                spawn(function()
-                    MapVoting.startVoting(15) -- 15 second voting period
-                end)
-            end
-        end)
     end)
 end
 

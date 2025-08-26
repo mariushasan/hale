@@ -10,6 +10,7 @@ local MapConstants = require(ReplicatedStorage.features.maps)
 -- Remote Events
 local MapVotingEvent = events:WaitForChild("MapVotingEvent")
 local MapVoteUpdateEvent = events:WaitForChild("MapVoteUpdateEvent")
+local MapVotingUIReadyEvent = events:WaitForChild("MapVotingUIReadyEvent")
 
 local MapVoting = {}
 local votingGui = nil
@@ -218,6 +219,8 @@ function MapVoting.init()
         voteCounts = newVoteCounts or {}
         updateVoteDisplay()
     end)
+
+    MapVotingUIReadyEvent:FireServer()
 end
 
 return MapVoting 

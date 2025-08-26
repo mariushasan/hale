@@ -3,12 +3,11 @@ local BossAttackConstants = {
     SHOP = false,
     ID = "bossattack",
     DAMAGE = 75,
-    RANGE = 15, -- This will be the MAX_BULLET_DISTANCE for boss attack
+    RANGE = 15,
     COOLDOWN = 2, -- seconds
     
     -- "Bullet" Properties (for simulation)
     BULLET_SPEED = 1000, -- Very fast so it hits almost immediately
-    MAX_BULLET_DISTANCE = 15, -- Same as range
     
     -- Raycast Offsets (square pattern for larger hitbox)
     RAYCAST_START_OFFSETS = {
