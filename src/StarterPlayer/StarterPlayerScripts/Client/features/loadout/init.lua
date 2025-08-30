@@ -143,7 +143,6 @@ local function createLoadoutGui()
         
         -- Click to equip weapon
         card.MouseButton1Click:Connect(function()
-            print("Equipping weapon:", constants.ID)
             Weapons.equip(constants.ID, true) -- true = notify server
             currentWeapon = constants.ID
             updateCurrentWeaponDisplay()
@@ -341,7 +340,6 @@ local function createLoadoutGui()
      local function setupCharacterInViewport()
          local character = player.Character
          if not character then
-             print("No character found for loadout display")
              return
          end
          
@@ -390,7 +388,7 @@ local function createLoadoutGui()
         
                  -- Position camera to show full character from front
          local clonedHumanoidRootPart = characterClone:FindFirstChild("HumanoidRootPart")
-         if clonedHumanoidRootPart then
+        if clonedHumanoidRootPart then
              -- Center the character at origin and face forward (towards camera)
              -- Rotate 180 degrees to face the camera
              clonedHumanoidRootPart.CFrame = CFrame.new(0, 0, 0) * CFrame.Angles(0, math.rad(180), 0)
@@ -439,9 +437,7 @@ local function createLoadoutGui()
              end
              liveUpdateConnection = RunService.Heartbeat:Connect(syncCharacterPose)
              
-         else
-             print("No HumanoidRootPart found in cloned character")
-         end
+        end
      end
     
          -- Setup character when GUI is created

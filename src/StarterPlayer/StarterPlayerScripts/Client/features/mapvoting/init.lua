@@ -3,6 +3,7 @@ local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local events = ReplicatedStorage:WaitForChild("events")
 local Grid = require(game.StarterPlayer.StarterPlayerScripts.Client.shared.components.grid)
+local Util = require(game.StarterPlayer.StarterPlayerScripts.Client.shared.util)
 
 -- Import map constants
 local MapConstants = require(ReplicatedStorage.features.maps)
@@ -170,6 +171,7 @@ end
 
 -- Public functions
 function MapVoting.show()
+    Util.hideDefaultGuis()
     for mapId, _ in pairs(MapConstants) do
         voteCounts[mapId] = 0
     end
@@ -183,6 +185,7 @@ function MapVoting.show()
 end
 
 function MapVoting.hide()
+    Util.showDefaultGuis()
     if votingGui then
         votingGui:Destroy()
         votingGui = nil

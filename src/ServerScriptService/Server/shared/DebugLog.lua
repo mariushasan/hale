@@ -10,6 +10,7 @@ end
 
 -- Debug logging function that sends to clients
 local function debugLog(message, player)
+    print("DebugLog loaded")
     print(message) -- Still print to server console
     
     -- Send to specific player or all players

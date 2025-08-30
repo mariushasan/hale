@@ -96,8 +96,6 @@ function Spectator.startSpectating()
             end
         end
     end)
-    
-    print("Spectator mode started")
 end
 
 -- Function to stop spectating
@@ -117,18 +115,14 @@ function Spectator.stopSpectating()
         camera.CameraSubject = player.Character.Head
         camera.CameraType = Enum.CameraType.Custom
     end
-    
-    print("Spectator mode stopped")
 end
 
 -- Handle spectator status from server
 function Spectator.init()
     spectatorStatusEvent.OnClientEvent:Connect(function(shouldSpectate)
         if shouldSpectate then
-            print("Spectator mode started")
             Spectator.startSpectating()
         else
-            print("Spectator mode stopped")
             Spectator.stopSpectating()
         end
     end)

@@ -40,7 +40,6 @@ local function createMenuSystem()
     
     -- Determine if mobile
     local isMobile = UserInputService.TouchEnabled
-    print("isMobile", UserInputService.TouchEnabled, UserInputService.MouseEnabled)
     
     if isMobile then
         -- Mobile: Create the main menu icon with clickable buttons
@@ -61,7 +60,7 @@ local function createMenuSystem()
         local keybindBlock = Instance.new("Frame")
         keybindBlock.Name = "KeybindBlock"
         keybindBlock.Size = UDim2.new(0, 110, 0, 60)
-        keybindBlock.Position = UDim2.new(0, 5, 1, -65) -- Top right corner like mobile
+        keybindBlock.Position = UDim2.new(0, 0, 1, -60) -- Top right corner like mobile
         keybindBlock.AnchorPoint = Vector2.new(0, 0)
         keybindBlock.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
         keybindBlock.BorderSizePixel = 0
@@ -193,7 +192,6 @@ end
 
 function Game.init()
     TimerRemoteEvent.OnClientEvent:Connect(function(timeSeconds)
-        print("TimerRemoteEvent received")
         GameUI.setTimer(timeSeconds)
     end)
 	
@@ -207,8 +205,6 @@ function Game.init()
     
     -- Create the menu system
     menuIconGui = createMenuSystem()
-    
-    print("Game menu system initialized")
 end
 
 return Game

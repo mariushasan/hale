@@ -1,7 +1,7 @@
 -- Function to hide chat and leaderboard
-local Players = game:GetService("Players")
 local StarterGui = game:GetService("StarterGui")
 local UserInputService = game:GetService("UserInputService")
+local Players = game:GetService("Players")
 
 local originalChatEnabled = true
 local originalLeaderboardEnabled = true

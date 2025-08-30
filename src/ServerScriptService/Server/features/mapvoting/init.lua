@@ -54,7 +54,6 @@ local function handlePlayerVote(player, mapId)
     playerVotes[player] = mapId
     mapVotes[mapId] = mapVotes[mapId] + 1
     
-    print(player.Name .. " voted for " .. mapId)
     broadcastVoteUpdate()
 end
 
@@ -91,9 +90,7 @@ function MapVoting.startVoting(duration)
         warn("Voting already active!")
         return
     end
-    
-    print("Starting map voting for " .. duration .. " seconds")
-    
+        
     playerVotes = {}
     initializeVoteCounts()
     votingEndTime = tick() + duration
@@ -126,8 +123,6 @@ function MapVoting.endVoting()
     votingActive = false
     local winningMap = getWinningMap()
     
-    print("Voting ended. Winning map: " .. winningMap .. " with " .. mapVotes[winningMap] .. " votes")
-    
     -- Notify all clients that voting has ended
     MapVotingEvent:FireAllClients("end", winningMap)
     
@@ -153,14 +148,11 @@ function MapVoting.loadMap(mapId)
     
     local mapData = MapConstants[mapId]
     local mapFileName = mapData.FILE_NAME
-    
-    print("Loading map:", mapData.DISPLAY_NAME, "(" .. mapFileName .. ")")
-    
+        
     -- Clear existing map if any
     local existingMap = workspace:FindFirstChild("CurrentMap")
     if existingMap then
         existingMap:Destroy()
-        print("Cleared existing map")
     end
     
     -- Try to load the map from ServerStorage
@@ -182,7 +174,6 @@ function MapVoting.loadMap(mapId)
     loadedMap.Name = "CurrentMap"
     loadedMap.Parent = workspace
     
-    print("Map loaded successfully:", mapData.DISPLAY_NAME)
     return true
 end
 

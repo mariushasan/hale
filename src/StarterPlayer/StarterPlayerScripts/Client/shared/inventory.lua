@@ -27,7 +27,6 @@ local function handleInventoryUpdate(data)
     if action == "sync" then
         -- Full inventory sync
         inventoryData = data.data
-        print("📦 Inventory synced - Coins:", inventoryData.coins)
         
         -- Notify UI of updates
         for _, callback in pairs(coinUpdateCallbacks) do
@@ -40,7 +39,6 @@ local function handleInventoryUpdate(data)
     elseif action == "coinsUpdated" then
         -- Coins updated
         inventoryData.coins = data.coins
-        print("💰 Coins updated:", inventoryData.coins)
         
         -- Notify UI
         for _, callback in pairs(coinUpdateCallbacks) do
@@ -50,7 +48,6 @@ local function handleInventoryUpdate(data)
     elseif action == "itemAdded" then
         -- Item added to inventory
         inventoryData.ownedItems[data.itemId] = data.ownedItems[data.itemId]
-        print("➕ Item added:", data.itemId)
         
         -- Notify UI
         for _, callback in pairs(inventoryUpdateCallbacks) do
@@ -60,7 +57,6 @@ local function handleInventoryUpdate(data)
     elseif action == "itemRemoved" then
         -- Item removed from inventory
         inventoryData.ownedItems = data.ownedItems
-        print("➖ Item removed:", data.itemId)
         
         -- Notify UI
         for _, callback in pairs(inventoryUpdateCallbacks) do
@@ -77,7 +73,6 @@ end
 
 -- Handle purchase responses from server
 local function handlePurchaseResponse(response)
-    print("Purchase response:", response.success, response.error or response.itemName)
     
     -- Notify purchase callbacks
     for _, callback in pairs(purchaseCallbacks) do
@@ -86,9 +81,7 @@ local function handlePurchaseResponse(response)
 end
 
 -- Public functions
-function Inventory.init()
-    print("Client inventory system initialized")
-    
+function Inventory.init()    
     -- Connect to server events
     InventoryEvent.OnClientEvent:Connect(handleInventoryUpdate)
     PurchaseEvent.OnClientEvent:Connect(handlePurchaseResponse)
@@ -111,8 +104,6 @@ end
 
 -- Check if player owns an item
 function Inventory.ownsItem(itemId)
-    print("Checking if player owns item:", itemId)
-    print("Owned items:", inventoryData.ownedItems)
     return inventoryData.ownedItems[itemId] ~= nil
 end
 
@@ -128,7 +119,6 @@ function Inventory.purchaseItem(itemId)
         return
     end
     
-    print("🛒 Requesting purchase of:", itemId)
     PurchaseEvent:FireServer(itemId)
 end
 
@@ -196,7 +186,6 @@ function Inventory.removeItem(itemId)
         return
     end
     
-    print("🗑️ Requesting removal of:", itemId)
     InventoryEvent:FireServer({
         action = "removeItem",
         itemId = itemId

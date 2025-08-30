@@ -13,6 +13,7 @@ local Shotgun = require(script.shotgun)
 local BossAttack = require(script.bossattack)
 local AssaultRifle = require(script.assaultrifle)
 local HitGui = require(script.ui.HitGui)
+local BulletsGui = require(script.ui.BulletsGui)
 
 -- Seed management for deterministic spread patterns
 local currentSeed = tick()
@@ -178,31 +179,12 @@ function Weapons.handleFireFromClient()
 		return
 	end
 
-	print("1")
-
 	local weaponConstants = WeaponConstants[currentWeapon]
 
-	print("2")
-
-	if not gunStates[currentWeapon] then
-		gunStates[currentWeapon] = {
-			clips = weaponConstants.STARTING_CLIPS,
-			ammo = weaponConstants.CLIP_SIZE,
-			reloading = false,
-			lastFireTime = 0,
-		}
-	end
-
-	print("3")
-
 	local currentTime = tick()
-    if not (currentTime - gunStates[currentWeapon].lastFireTime >= weaponConstants.FIRE_COOLDOWN) then
-		print(currentTime - gunStates[currentWeapon].lastFireTime)
-		print(weaponConstants.FIRE_COOLDOWN)
+    if not ((currentTime - gunStates[currentWeapon].lastFireTime) >= weaponConstants.FIRE_COOLDOWN) then
         return
     end
-
-	print("4")
 
 	if gunStates[currentWeapon].reloading then
 		return
@@ -211,10 +193,6 @@ function Weapons.handleFireFromClient()
 	if gunStates[currentWeapon].ammo <= 0 and gunStates[currentWeapon].clips <= 0 then
 		return
 	end
-
-	gunStates[currentWeapon].lastFireTime = currentTime
-
-	print("5")
 
 	if gunStates[currentWeapon].ammo <= 0 then
         gunStates[currentWeapon].reloading = true
@@ -226,17 +204,18 @@ function Weapons.handleFireFromClient()
             gunStates[currentWeapon].ammo = weaponConstants.CLIP_SIZE
             gunStates[currentWeapon].clips = gunStates[currentWeapon].clips - 1
             gunStates[currentWeapon].reloading = false
+			BulletsGui.updateBulletsGui(gunStates[currentWeapon].ammo, weaponConstants.CLIP_SIZE, gunStates[currentWeapon].clips, weaponConstants.MAX_CLIPS)
         end)
         return
     end
 
-	print("6")
-
 	local weapon = availableWeapons[currentWeapon]
+
+	gunStates[currentWeapon].lastFireTime = currentTime
 
 	gunStates[currentWeapon].ammo = gunStates[currentWeapon].ammo - 1
 
-	print("7")
+	BulletsGui.updateBulletsGui(gunStates[currentWeapon].ammo, weaponConstants.CLIP_SIZE, gunStates[currentWeapon].clips, weaponConstants.MAX_CLIPS)
 
 	local player = Players.LocalPlayer
 
@@ -250,14 +229,10 @@ function Weapons.handleFireFromClient()
 
 	local bullets = weapon.createSpreadPattern(startPosition, direction)
 
-	print("8")
-
 	local hits = {}
 
 	local bulletStart = visualRig:FindFirstChild("BulletStart", true)
 	local bulletStartPosition = bulletStart and bulletStart.WorldPosition
-
-	print("9")
 
 	for _, bullet in ipairs(bullets) do
         local raycastParams = RaycastParams.new()
@@ -271,15 +246,9 @@ function Weapons.handleFireFromClient()
 			local raycastDistance = weaponConstants.RANGE
 			local raycastResult = workspace:Raycast(raycastData.startPosition, raycastData.direction * raycastDistance, raycastParams)
 
-			print("raycastResult")
-			print(raycastResult)
 			
 			if raycastResult then
 				hitPosition = raycastResult.Position
-				print("hitPosition")
-				print(hitPosition)
-				print("hitPart")
-				print(raycastResult.Instance)
 
 				table.insert(hits, {
 					hitPart = raycastResult.Instance,
@@ -296,22 +265,16 @@ function Weapons.handleFireFromClient()
 		end
 	end
 
-	print("10")
-
 	if currentFireAnimationTrack then
 		currentFireAnimationTrack:Play()
 	end
 	
-	print("11")
-
 	if #hits > 0 then
 		local avgHitPosition, validHits = HitGui.calculateAverageHitPosition(hits)
 		if avgHitPosition and validHits > 0 then
 			local totalDamage = validHits * weaponConstants.DAMAGE_PER_HIT
 			HitGui.showDamageNumber(totalDamage, avgHitPosition)
 		end
-
-		print("12")
 
 		shootEvent:FireServer(hits, direction, startPosition, seed)
 	end
@@ -338,9 +301,12 @@ function Weapons.handleFireFromServer(weaponType, shooter, bullets)
 end
 
 function Weapons.init()
-	
+	print("0")
+	BulletsGui.init()
+
 	-- Equip default weapon
-	local currentWeaponType = currentWeapon or "shotgun"
+	local currentWeaponType = currentWeapon or "AssaultRifle"
+	print("Equipping weapon", currentWeaponType)
 	Weapons.equip(currentWeaponType, true)
 	
 	-- Handle character respawning - cleanup crosshair
@@ -357,6 +323,18 @@ function Weapons.init()
 			crosshair:Destroy()
 		end
 		crosshair = createDynamicCrosshair()
+
+
+		for _, child in ipairs(character:GetChildren()) do
+			if child:IsA("BasePart") then
+				child.LocalTransparencyModifier = 1
+				child.Transparency = 1
+				transparencyConnections[part.Name] = part:GetPropertyChangedSignal("LocalTransparencyModifier"):Connect(function()
+					part.LocalTransparencyModifier = 1
+					part.Transparency = 1
+				end)
+			end
+		end
 
 		local humanoid = character:WaitForChild("Humanoid")
 		humanoid.Died:Connect(function()
@@ -428,25 +406,38 @@ function Weapons.init()
 end
 
 function Weapons.equip(weaponType, notifyServer)
+	print("1")
 	currentWeapon = weaponType
 	
 	if not Players.LocalPlayer.Character then
         return
     end
 
+	print("2")
+
 	local weaponConstants = WeaponConstants[weaponType]
 
+	if not gunStates[currentWeapon] then
+		gunStates[currentWeapon] = {
+			clips = weaponConstants.STARTING_CLIPS,
+			ammo = weaponConstants.CLIP_SIZE,
+			reloading = false,
+			lastFireTime = 0,
+		}
+	end
+
+	print("3")
+	print(weaponType)
+
 	local weaponModel = ReplicatedStorage:FindFirstChild("models"):FindFirstChild("weapons"):FindFirstChild(weaponType)
+	print("weaponModel", weaponModel)
     if not weaponModel then
         return
     end
 
     local originalCharacter = Players.LocalPlayer.Character
-    local originalHumanoid = originalCharacter:FindFirstChildOfClass("Humanoid")
 
-	if not originalHumanoid then
-        return
-    end
+	print("4")
 
 	local newCharacterModel = weaponModel:Clone()
 
@@ -455,6 +446,8 @@ function Weapons.equip(weaponType, notifyServer)
 	if not weaponHumanoid then
 		return
 	end
+
+	print("5")
 
     local clothingItems = {"Shirt", "Pants", "ShirtGraphic"}
 
@@ -477,12 +470,16 @@ function Weapons.equip(weaponType, notifyServer)
         return
     end
 
+	print("6")
+
 	if visualRig then
 		visualRig:Destroy()
 		visualRig = nil
 	end
 
 	visualRootPart = nil
+
+	print("7")
 
 	-- Clone the character for visual rig
 	visualRig = newCharacterModel:Clone()
@@ -507,6 +504,8 @@ function Weapons.equip(weaponType, notifyServer)
     end
 
 	visualRig.Parent = workspace.CurrentCamera
+
+	print("8")
 
 	if visualHumanoid then
         local animator = visualHumanoid:FindFirstChildOfClass("Animator")
@@ -563,6 +562,10 @@ function Weapons.equip(weaponType, notifyServer)
             currentReloadAnimationTrack:AdjustSpeed(currentReloadAnimationTrack.Length / weaponConstants.RELOAD_TIME)
         end
     end
+
+	print("9")
+
+	BulletsGui.updateBulletsGui(gunStates[weaponType].ammo, weaponConstants.CLIP_SIZE, gunStates[weaponType].clips, weaponConstants.MAX_CLIPS)
 
     local cameraOffset = Vector3.new(0.7, -1, 0.5)
 

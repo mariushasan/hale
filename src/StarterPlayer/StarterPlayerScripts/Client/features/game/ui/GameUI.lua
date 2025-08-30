@@ -16,19 +16,18 @@ function GameUI.create()
     gameGui.ResetOnSpawn = false
     gameGui.Parent = playerGui
     gameGui.Enabled = true
+    gameGui.IgnoreGuiInset = true
 
     timerLabel = Instance.new("TextLabel")
     timerLabel.Name = "TimerLabel"
     timerLabel.Parent = gameGui
-    timerLabel.Position = UDim2.new(1, -110, 1, -60)
-    timerLabel.Size = UDim2.new(0, 100, 0, 50)
+    timerLabel.Position = UDim2.new(0.5, -40, 0, 0)
+    timerLabel.Size = UDim2.new(0, 80, 0, 30)
     timerLabel.Text = "00:00"
-    timerLabel.TextSize = 24
+    timerLabel.TextScaled = true
     timerLabel.TextColor3 = Color3.new(1, 1, 1)
     timerLabel.BackgroundTransparency = 0
-    timerLabel.BackgroundColor3 = Color3.new(0.501960, 0.733333, 1)
-    timerLabel.BorderSizePixel = 5
-    timerLabel.BorderColor3 = Color3.new(1, 1, 1)
+    timerLabel.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
 
     middleLabel = Instance.new("TextLabel")
     middleLabel.Name = "MiddleLabel"

@@ -116,7 +116,6 @@ function Grid.create(guiName, cards)
         local cardCount = 0
         for _, card in pairs(cards) do
             card.Size = UDim2.new(0, cardWidth, 0, cardHeight)
-            print(card.Size)
             card.Parent = containerFrame
             card.LayoutOrder = cardCount
             cardCount = cardCount + 1

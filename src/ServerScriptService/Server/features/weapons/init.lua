@@ -10,6 +10,8 @@ local events = ReplicatedStorage:WaitForChild("events")
 local WeaponConstants = require(ReplicatedStorage.features.weapons)
 
 debugLog = require(game.ServerScriptService.Server.shared.DebugLog)
+
+local gunStates = {}
 -- Import server-side weapon modules
 local BossAttackModule = require(script.bossattack)
 local ShotgunModule = require(script.shotgun)
@@ -442,8 +444,7 @@ function weapons.init()
 
         -- Equip new weapon's server-side logic
         local newServerModule = getWeaponModule(weaponType)
-        print("newServerModule")
-        print(newServerModule)
+
         if newServerModule and newServerModule.equip then
             newServerModule.equip(player)
         end
@@ -478,10 +479,8 @@ function weapons.init()
                 firstHitCFrame = firstHitPart.CFrame
             end
 
-            print("firstHitCFrame")
-            print(firstHitCFrame)
-
             local hitPlayer = Players:GetPlayerFromCharacter(hitCharacter)
+
             local targetUserId = nil
             local targetDummyName = nil
 
@@ -495,6 +494,7 @@ function weapons.init()
             if targetUserId then
                 for timestamp, snapshot in pairs(playerPositionHistory) do
                     local playerData = snapshot[targetUserId]
+
                     if playerData then
                         local metric = ((playerData.cframe.Position - firstHitCFrame.Position).Magnitude) + math.acos(math.clamp(playerData.cframe.LookVector:Dot(firstHitCFrame.LookVector), -1, 1))
                         if metric < bestMetric then
@@ -527,11 +527,97 @@ function weapons.init()
 
             -- Perform server-side validation with rewinded world state
             local shooterLagPart = getLagPart(shooter)
-            local hits = weaponModule.handleFireFromServer(shooter, shooterLagPart, direction, startPosition, seed, LAG_PARTS_GROUP)
+
+            if not gunStates[shooter.UserId] then
+                gunStates[shooter.UserId] = {}
+            end
+
+            if not gunStates[shooter.UserId][weaponType] then
+                gunStates[shooter.UserId][weaponType] = {
+                    clips = weaponConstants.STARTING_CLIPS,
+                    ammo = weaponConstants.CLIP_SIZE,
+                    reloading = false,
+                    lastFireTime = 0,
+                }
+            end
+
+            local currentTime = tick()
+            if not ((currentTime - gunStates[shooter.UserId][weaponType].lastFireTime) >= weaponConstants.FIRE_COOLDOWN) then
+                return
+            end
+
+            if (gunStates[shooter.UserId][weaponType].ammo <= 0 and gunStates[shooter.UserId][weaponType].clips <= 0) or gunStates[shooter.UserId][weaponType].reloading then
+                return
+            end
+
+            if gunStates[shooter.UserId][weaponType].ammo <= 0 then
+                gunStates[shooter.UserId][weaponType].reloading = true
+                task.spawn(function()
+                    wait(weaponConstants.RELOAD_TIME)
+                    gunStates[shooter.UserId][weaponType].ammo = weaponConstants.CLIP_SIZE
+                    gunStates[shooter.UserId][weaponType].clips = gunStates[shooter.UserId][weaponType].clips - 1
+                    gunStates[shooter.UserId][weaponType].reloading = false
+                end)
+                return
+            end
+
+            gunStates[shooter.UserId][weaponType].lastFireTime = currentTime
+
+            gunStates[shooter.UserId][weaponType].ammo = gunStates[shooter.UserId][weaponType].ammo - 1
+
+            local bullets = weaponModule.createSpreadPattern(startPosition, direction, seed)
+
+            local validatedHits = {}
+
+            for i, bullet in ipairs(bullets) do
+                bullet.id = shooterLagPart.Name .. "_" .. tick() .. "_" .. i
+            end
+
+            for _, bullet in ipairs(bullets) do
+                local raycastParams = RaycastParams.new()
+                raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+                raycastParams.FilterDescendantsInstances = {shooterLagPart}
+                raycastParams.CollisionGroup = LAG_PARTS_GROUP
+                
+                local bulletHit = false
+                local hitPart = nil
+                local hitPosition = nil
+                local hitRaycastData = nil
+                
+                -- Try each raycast for this bullet until we get a hit
+                for _, raycastData in ipairs(bullet.raycastData) do
+                    if bulletHit then break end
+                    
+                    -- Raycast in the direction we're shooting
+                    local raycastDistance = weaponConstants.RANGE -- Max shooting distance
+                    local raycastResult = workspace:Raycast(raycastData.startPosition, raycastData.direction * raycastDistance, raycastParams)
+
+                    if raycastResult then
+                        local hitInstance = raycastResult.Instance
+                        local character = hitInstance.Parent
+                        local humanoid = character:FindFirstChildOfClass("Humanoid")
+                        
+                        hitPart = hitInstance
+                        hitPosition = raycastResult.Position
+                        hitRaycastData = raycastData
+                        
+                        break
+                    end
+                end
+                
+                -- Add validated hit data
+                table.insert(validatedHits, {
+                    id = bullet.id,
+                    animationStartOffset = bullet.animationStartOffset,
+                    animationDirection = bullet.animationDirection,
+                    hitPart = hitPart,
+                    hitPosition = hitPosition,
+                })
+            end
 
             local damage = weaponConstants.DAMAGE_PER_HIT
 
-            for _, hit in ipairs(hits) do
+            for _, hit in ipairs(validatedHits) do
                 local hitPart = hit.hitPart
                 local hitPosition = hit.hitPosition
 

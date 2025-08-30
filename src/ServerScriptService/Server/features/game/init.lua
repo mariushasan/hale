@@ -13,17 +13,16 @@ local GameUIReadyEvent = events:WaitForChild("GameUIReadyEvent")
 local OutcomeRemoteEvent = events:WaitForChild("OutcomeRemoteEvent")
 local Players = game:GetService("Players")
 
-
-Players.CharacterAutoLoads = false
+-- Enable character auto-loads but we'll control where they spawn
+Players.CharacterAutoLoads = true
 
 -- Create spectator status remote event
-local spectatorStatusEvent = events:WaitForChild("SpectatorStatusEvent")
 
 -- Constants
 local TESTING = false
 local MINUTE = 60
-local GAME_TIME = 60
-local VOTING_TIME = 3
+local GAME_TIME = 200
+local VOTING_TIME = 5
 local DEBOUNCE = 3
 local PLAYER_THRESHOLD = 1
 local states = {
@@ -31,6 +30,9 @@ local states = {
 	END = "END",
 	VOTING = "VOTING",
 }
+
+-- Hidden waiting room location (far away from the game area but safe)
+local WAITING_ROOM_POSITION = Vector3.new(0, 1000, 0)
 
 -- Local properties
 local playersWaiting = {}
@@ -42,6 +44,64 @@ local currentWaitingTime = 0
 
 -- Define the Game object
 local Game = {}
+
+local function teleportPlayerToSpawn(player)
+	local character = player.Character
+	if not character then 
+		print("No character found for player:", player.Name)
+		return 
+	end
+	
+	local humanoid = character:FindFirstChild("Humanoid")
+	if not humanoid then
+		print("No humanoid found for player:", player.Name)
+		return
+	end
+	
+	print("Player", player.Name, "has character and humanoid, health:", humanoid.Health)
+	
+	local spawnLocation = workspace:FindFirstChild("SpawnLocation", true)
+	print("Teleporting player to spawn location", spawnLocation)
+	if spawnLocation then
+		local spawnCFrame = spawnLocation.CFrame + Vector3.new(0, 5, 0)
+		print("Teleporting player to spawn location", spawnCFrame)
+		character:PivotTo(spawnCFrame)
+		print("Player", player.Name, "teleported to spawn, health after teleport:", humanoid.Health)
+	end
+end
+
+local function teleportPlayerToWaitingRoom(player)
+	local character = player.Character
+	if not character then 
+		print("No character found for player in waiting room:", player.Name)
+		return 
+	end
+	
+	local humanoid = character:FindFirstChild("Humanoid")
+	if not humanoid then
+		print("No humanoid found for player in waiting room:", player.Name)
+		return
+	end
+	
+	print("Player", player.Name, "going to waiting room, health:", humanoid.Health)
+
+	local WaitingLocation = workspace:FindFirstChild("WaitingLocation", true)
+	if WaitingLocation then
+		print("Using WaitingLocation at:", WaitingLocation.Position)
+		character:PivotTo(WaitingLocation.CFrame + Vector3.new(0, 5, 0))
+		print("Player", player.Name, "teleported to waiting room, health after teleport:", humanoid.Health)
+	else
+		print("No WaitingLocation found, using fallback position at:", WAITING_ROOM_POSITION)
+		-- Use a safer position that's definitely above the world
+		local safeWaitingPosition = Vector3.new(0, 2000, 0) -- Much higher to ensure safety
+		character:PivotTo(CFrame.new(safeWaitingPosition))
+		print("Player", player.Name, "teleported to fallback waiting room at", safeWaitingPosition, "health after teleport:", humanoid.Health)
+	end
+	
+	-- Check position after teleport
+	task.wait(0.1)
+	print("Player", player.Name, "final position after teleport:", character:GetPivot().Position)
+end
 
 local function startPlayerMonitoring()
 	if not waitingMonitorTask then
@@ -101,13 +161,6 @@ function startGame()
 		return nil
 	end
 
-	-- Manually spawn all waiting players
-	for userId, player in pairs(playersWaiting) do
-		if player and player.Parent then -- Check if player is still in game
-			player:LoadCharacter()
-		end
-	end
-
 	-- Team assignment logic
 	Teams.assignTeams(playersWaiting)
 
@@ -130,8 +183,16 @@ function startGame()
 		return
 	end
 
-	-- Wait a moment for characters to load
-	task.wait(1)
+	-- Teleport all waiting players to spawn location
+	for userId, player in pairs(playersWaiting) do
+		if player and player.Parent then
+			teleportPlayerToSpawn(player)
+			Spectator.updateSpectatorStatus(player, false)
+		end
+	end
+
+	-- Wait a moment for teleportation to complete
+	task.wait(0.5)
 
 	-- Equip boss attack weapon (handles both server transformation and client notification)
 	Weapons.equipPlayerWeapon(bossPlayer, "bossattack")
@@ -145,7 +206,6 @@ function startGame()
 	TimerRemoteEvent:FireAllClients(GAME_TIME)
 	
 	-- Update spectator status for all players
-	Spectator.updateSpectatorStatus()
 
 	-- End the game after done
 	gameTimerTask = task.delay(GAME_TIME, function()
@@ -215,21 +275,48 @@ function Game.init()
 		-- Add player to waiting list immediately (they'll be spectators until game starts)
 		
 		-- Update spectator status for the new player
-		Spectator.updateSpectatorStatus()
+		Spectator.updateSpectatorStatus(player, true)
 
 		player.CharacterAdded:Connect(function(character)
+			print("Character added for player:", player.Name)
+			
+			-- Wait for humanoid to be available
+			local humanoid = character:WaitForChild("Humanoid", 5)
+			if not humanoid then
+				print("Failed to get humanoid for player:", player.Name)
+				return
+			end
+			
+			print("Humanoid found for player:", player.Name, "Health:", humanoid.Health, "MaxHealth:", humanoid.MaxHealth)
+			
+			-- Teleport new character to waiting room immediately
+			task.wait(0.1) -- Small delay to ensure character is fully loaded
+			local playerInArena = false
+			for _, arenaPlayer in pairs(playersInArena) do
+				if arenaPlayer.UserId == player.UserId then
+					playerInArena = true
+					break
+				end
+			end
+			if not playerInArena then
+				teleportPlayerToWaitingRoom(player)
+			end
+			
 			local humanoid = character:WaitForChild("Humanoid")
 
 			-- Update spectator status when player spawn
-			Spectator.updateSpectatorStatus()
 			
 			humanoid.Died:Connect(function()
+				print("Player", player.Name, "died! Health:", humanoid.Health, "MaxHealth:", humanoid.MaxHealth)
+				print("Character position:", character:GetPivot().Position)
+				print("Game state:", state)
+				
 				playersWaiting[player.UserId] = player
 				playersInArena[player.UserId] = nil
 				player.Team = Teams.waitingTeam
 				
 				-- Update spectator status when player dies
-				Spectator.updateSpectatorStatus()
+				Spectator.updateSpectatorStatus(player, true)
 				
 				-- Only check team elimination if game is currently playing
 				if state == states.PLAYING then
