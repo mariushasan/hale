@@ -1,10 +1,7 @@
-local Teams = {}
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TeamTypes = require(ReplicatedStorage.features.teams)
 
-Teams.TeamTypes = {
-	BOSS = "Boss",
-	SURVIVOR = "Survivor", 
-	WAITING = "Waiting"
-}
+local Teams = {}
 
 Teams.bossTeam = nil
 Teams.survivorTeam = nil
@@ -26,6 +23,8 @@ function Teams.assignTeams(players)
 	local bossPlayer = players[userIds[math.random(#userIds)]]
 	bossPlayer.Team = Teams.bossTeam
 
+	print("Boss player:", bossPlayer.Name)
+
 	return bossPlayer
 end
 
@@ -33,6 +32,10 @@ function Teams.assignWaitingTeams(players)
 	for userId, player in pairs(players) do
 		player.Team = Teams.waitingTeam
 	end
+end
+
+function Teams.assignWaitingTeam(player)
+	player.Team = Teams.waitingTeam
 end
 
 function Teams.getBossPlayer()
@@ -46,34 +49,34 @@ end
 function Teams.init()
 	local TeamsService = game:GetService("Teams")
 	
-	if not TeamsService:FindFirstChild(Teams.TeamTypes.BOSS) then
+	if not TeamsService:FindFirstChild(TeamTypes.BOSS) then
 		Teams.bossTeam = Instance.new("Team")
 		Teams.bossTeam.TeamColor = BrickColor.new("Bright red")
 		Teams.bossTeam.AutoAssignable = false
-		Teams.bossTeam.Name = Teams.TeamTypes.BOSS
+		Teams.bossTeam.Name = TeamTypes.BOSS
 		Teams.bossTeam.Parent = TeamsService
 	else
-		Teams.bossTeam = TeamsService:FindFirstChild(Teams.TeamTypes.BOSS)
+		Teams.bossTeam = TeamsService:FindFirstChild(TeamTypes.BOSS)
 	end
 
-	if not TeamsService:FindFirstChild(Teams.TeamTypes.SURVIVOR) then
+	if not TeamsService:FindFirstChild(TeamTypes.SURVIVOR) then
 		Teams.survivorTeam = Instance.new("Team")
 		Teams.survivorTeam.TeamColor = BrickColor.new("Bright blue")
 		Teams.survivorTeam.AutoAssignable = false
-		Teams.survivorTeam.Name = Teams.TeamTypes.SURVIVOR
+		Teams.survivorTeam.Name = TeamTypes.SURVIVOR
 		Teams.survivorTeam.Parent = TeamsService
 	else
-		Teams.survivorTeam = TeamsService:FindFirstChild(Teams.TeamTypes.SURVIVOR)
+		Teams.survivorTeam = TeamsService:FindFirstChild(TeamTypes.SURVIVOR)
 	end
 
-	if not TeamsService:FindFirstChild(Teams.TeamTypes.WAITING) then
+	if not TeamsService:FindFirstChild(TeamTypes.WAITING) then
 		Teams.waitingTeam = Instance.new("Team")
 		Teams.waitingTeam.TeamColor = BrickColor.new("Grey")
 		Teams.waitingTeam.AutoAssignable = true
-		Teams.waitingTeam.Name = Teams.TeamTypes.WAITING
+		Teams.waitingTeam.Name = TeamTypes.WAITING
 		Teams.waitingTeam.Parent = TeamsService
 	else
-		Teams.waitingTeam = TeamsService:FindFirstChild(Teams.TeamTypes.WAITING)
+		Teams.waitingTeam = TeamsService:FindFirstChild(TeamTypes.WAITING)
 	end
 end
 

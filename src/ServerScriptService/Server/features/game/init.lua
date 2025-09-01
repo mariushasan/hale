@@ -13,6 +13,8 @@ local GameUIReadyEvent = events:WaitForChild("GameUIReadyEvent")
 local OutcomeRemoteEvent = events:WaitForChild("OutcomeRemoteEvent")
 local Players = game:GetService("Players")
 
+local TeamTypes = require(ReplicatedStorage.features.teams)
+
 -- Enable character auto-loads but we'll control where they spawn
 Players.CharacterAutoLoads = true
 
@@ -35,8 +37,6 @@ local states = {
 local WAITING_ROOM_POSITION = Vector3.new(0, 1000, 0)
 
 -- Local properties
-local playersWaiting = {}
-local playersInArena = {}
 local gameTimerTask = nil
 local waitingMonitorTask = nil
 local state = states.END
@@ -60,47 +60,13 @@ local function teleportPlayerToSpawn(player)
 	
 	print("Player", player.Name, "has character and humanoid, health:", humanoid.Health)
 	
-	local spawnLocation = workspace:FindFirstChild("SpawnLocation", true)
-	print("Teleporting player to spawn location", spawnLocation)
-	if spawnLocation then
-		local spawnCFrame = spawnLocation.CFrame + Vector3.new(0, 5, 0)
+	local gameStart = workspace:FindFirstChild("GameStart", true)
+	if gameStart then
+		local spawnCFrame = gameStart.CFrame + Vector3.new(0, 5, 0)
 		print("Teleporting player to spawn location", spawnCFrame)
 		character:PivotTo(spawnCFrame)
 		print("Player", player.Name, "teleported to spawn, health after teleport:", humanoid.Health)
 	end
-end
-
-local function teleportPlayerToWaitingRoom(player)
-	local character = player.Character
-	if not character then 
-		print("No character found for player in waiting room:", player.Name)
-		return 
-	end
-	
-	local humanoid = character:FindFirstChild("Humanoid")
-	if not humanoid then
-		print("No humanoid found for player in waiting room:", player.Name)
-		return
-	end
-	
-	print("Player", player.Name, "going to waiting room, health:", humanoid.Health)
-
-	local WaitingLocation = workspace:FindFirstChild("WaitingLocation", true)
-	if WaitingLocation then
-		print("Using WaitingLocation at:", WaitingLocation.Position)
-		character:PivotTo(WaitingLocation.CFrame + Vector3.new(0, 5, 0))
-		print("Player", player.Name, "teleported to waiting room, health after teleport:", humanoid.Health)
-	else
-		print("No WaitingLocation found, using fallback position at:", WAITING_ROOM_POSITION)
-		-- Use a safer position that's definitely above the world
-		local safeWaitingPosition = Vector3.new(0, 2000, 0) -- Much higher to ensure safety
-		character:PivotTo(CFrame.new(safeWaitingPosition))
-		print("Player", player.Name, "teleported to fallback waiting room at", safeWaitingPosition, "health after teleport:", humanoid.Health)
-	end
-	
-	-- Check position after teleport
-	task.wait(0.1)
-	print("Player", player.Name, "final position after teleport:", character:GetPivot().Position)
 end
 
 local function startPlayerMonitoring()
@@ -111,8 +77,10 @@ local function startPlayerMonitoring()
 				
 				-- Count alive players
 				local waitingPlayerCount = 0
-				for _, player in pairs(playersWaiting) do
-					waitingPlayerCount = waitingPlayerCount + 1
+				for _, player in pairs(Players:GetPlayers()) do
+					if player.Team.Name == TeamTypes.WAITING then
+						waitingPlayerCount = waitingPlayerCount + 1
+					end
 				end
 				
 				-- Start game if we have enough players
@@ -155,62 +123,75 @@ local function startPlayerMonitoring()
 end
 
 function startGame()
-	state = states.PLAYING
-
-	if TESTING then
-		return nil
-	end
-
 	-- Team assignment logic
-	Teams.assignTeams(playersWaiting)
-
-	-- Make Boss
-	local bossPlayer = Teams.getBossPlayer()
-
+	local allPlayers = Players:GetPlayers()
 	-- Count players in waiting table
 	local waitingPlayerCount = 0
-	for _ in pairs(playersWaiting) do
-		waitingPlayerCount = waitingPlayerCount + 1
+
+	print("All players:", allPlayers)
+
+	for _, player in pairs(allPlayers) do
+		if player.Team.Name == TeamTypes.WAITING then
+			waitingPlayerCount = waitingPlayerCount + 1
+		end
 	end
 
+	print("Waiting player count:", waitingPlayerCount)
+
 	if waitingPlayerCount < PLAYER_THRESHOLD then
+		print("Not enough players or boss player, ending game")
 		endGame()
 		return
 	end
 
+	Teams.assignTeams(allPlayers)
+
+	-- Make Boss
+	local bossPlayer = Teams.getBossPlayer()
+
 	if not bossPlayer then
-		state = states.END
+		print("No boss player, ending game")
+		endGame()
 		return
 	end
 
+	print("Boss player:", bossPlayer.Name)
+
+
+	state = states.PLAYING
+
 	-- Teleport all waiting players to spawn location
-	for userId, player in pairs(playersWaiting) do
-		if player and player.Parent then
-			teleportPlayerToSpawn(player)
-			Spectator.updateSpectatorStatus(player, false)
+	print("Teleporting all players to spawn")
+	print(allPlayers)
+	for _, player in pairs(allPlayers) do
+		print("Teleporting player to spawn:", player.Name)
+		local character = player.Character
+
+		if character then
+			local HumanoidRootPart = character:WaitForChild("HumanoidRootPart", 5)
+
+			if HumanoidRootPart then
+				HumanoidRootPart.Anchored = false
+			end
+		end
+
+		teleportPlayerToSpawn(player)
+		Spectator.updateSpectatorStatus(player, false)
+		if player == bossPlayer then
+			print("Equipping boss weapon")
+			Weapons.equipPlayerWeapon(player, "BossAttack")
+		else
+			print("Equipping current weapon")
+			Weapons.equipCurrentWeapon(player)
 		end
 	end
 
-	-- Wait a moment for teleportation to complete
 	task.wait(0.5)
 
-	-- Equip boss attack weapon (handles both server transformation and client notification)
-	Weapons.equipPlayerWeapon(bossPlayer, "bossattack")
-
-	for _, player in pairs(playersWaiting) do
-		table.insert(playersInArena, player)
-		playersWaiting[player.UserId] = nil
-	end
-
-	-- Start the game timer
 	TimerRemoteEvent:FireAllClients(GAME_TIME)
-	
-	-- Update spectator status for all players
 
-	-- End the game after done
 	gameTimerTask = task.delay(GAME_TIME, function()
-		gameTimerTask = nil -- Clear the reference since task is completing
-		-- Game ended due to time - it's a draw
+		gameTimerTask = nil
 		OutcomeRemoteEvent:FireAllClients("Draw")
 		endGame()
 	end)
@@ -219,34 +200,23 @@ end
 function endGame()
 	state = states.END
 
-	-- Cancel the game timer task if it's still running
 	if gameTimerTask then
 		task.cancel(gameTimerTask)
 		gameTimerTask = nil
 	end
 
-	-- Reset boss player size and health
 	local bossPlayer = Teams.getBossPlayer()
-	-- Reset boss to normal weapon (handles both server de-transformation and client notification)
+
 	if bossPlayer then
-		Weapons.equipPlayerWeapon(bossPlayer, "shotgun")
+		Weapons.equipPreviousWeapon(bossPlayer)
 	end
-
-	-- Teleport players back to the waiting room
-
-	TimerRemoteEvent:FireAllClients(VOTING_TIME)
 					
-	-- Start monitoring for enough players instead of auto-starting
 	startPlayerMonitoring()
 
-	Teams.assignWaitingTeams(playersInArena)
+	local allPlayers = Players:GetPlayers()
 
-	for _, player in pairs(playersInArena) do
-		table.insert(playersWaiting, player)
-		playersInArena[player.UserId] = nil
-	end
+	Teams.assignWaitingTeams(allPlayers)
 
-	local allPlayers = game.Players:GetPlayers()
 	for _, player in pairs(allPlayers) do
 		Leaderboard.setStat(player, "Damage", 0)
 	end
@@ -269,16 +239,20 @@ function Game.init()
 	startPlayerMonitoring()
 
 	Players.PlayerAdded:Connect(function(player)
-		player.Team = Teams.waitingTeam
-		table.insert(playersWaiting, player)
+		Teams.assignWaitingTeam(player)
 
 		-- Add player to waiting list immediately (they'll be spectators until game starts)
 		
 		-- Update spectator status for the new player
-		Spectator.updateSpectatorStatus(player, true)
 
 		player.CharacterAdded:Connect(function(character)
 			print("Character added for player:", player.Name)
+
+			local HumanoidRootPart = character:WaitForChild("HumanoidRootPart", 5)
+
+			if HumanoidRootPart and player.Team.Name == TeamTypes.WAITING then
+				HumanoidRootPart.Anchored = true
+			end
 			
 			-- Wait for humanoid to be available
 			local humanoid = character:WaitForChild("Humanoid", 5)
@@ -290,17 +264,7 @@ function Game.init()
 			print("Humanoid found for player:", player.Name, "Health:", humanoid.Health, "MaxHealth:", humanoid.MaxHealth)
 			
 			-- Teleport new character to waiting room immediately
-			task.wait(0.1) -- Small delay to ensure character is fully loaded
-			local playerInArena = false
-			for _, arenaPlayer in pairs(playersInArena) do
-				if arenaPlayer.UserId == player.UserId then
-					playerInArena = true
-					break
-				end
-			end
-			if not playerInArena then
-				teleportPlayerToWaitingRoom(player)
-			end
+			task.wait(0.5) -- Small delay to ensure character is fully loaded
 			
 			local humanoid = character:WaitForChild("Humanoid")
 
@@ -311,12 +275,9 @@ function Game.init()
 				print("Character position:", character:GetPivot().Position)
 				print("Game state:", state)
 				
-				playersWaiting[player.UserId] = player
-				playersInArena[player.UserId] = nil
-				player.Team = Teams.waitingTeam
+				Teams.assignWaitingTeam(player)
 				
 				-- Update spectator status when player dies
-				Spectator.updateSpectatorStatus(player, true)
 				
 				-- Only check team elimination if game is currently playing
 				if state == states.PLAYING then
@@ -324,11 +285,11 @@ function Game.init()
 					local bossTeamAlive = false
 					local survivorTeamAlive = false
 					
-					for _, arenaPlayer in pairs(playersInArena) do
-						if arenaPlayer and arenaPlayer.Character and arenaPlayer.Character:FindFirstChild("Humanoid") then
-							if arenaPlayer.Team == Teams.bossTeam then
+					for _, player in pairs(Players:GetPlayers()) do
+						if player and player.Character and player.Character:FindFirstChild("Humanoid") then
+							if player.Team.Name == TeamTypes.BOSS then
 								bossTeamAlive = true
-							elseif arenaPlayer.Team == Teams.survivorTeam then
+							elseif player.Team.Name == TeamTypes.SURVIVOR then
 								survivorTeamAlive = true
 							end
 						end
@@ -338,7 +299,7 @@ function Game.init()
 					if not bossTeamAlive then
 						-- Boss team eliminated - survivors win
 						for _, player in pairs(Players:GetPlayers()) do
-							if player.Team == Teams.survivorTeam then
+							if player.Team.Name == TeamTypes.SURVIVOR then
 								OutcomeRemoteEvent:FireClient(player, "Victory")
 							else
 								OutcomeRemoteEvent:FireClient(player, "Defeat")
@@ -349,7 +310,7 @@ function Game.init()
 					elseif not survivorTeamAlive then
 						-- Survivors eliminated - boss wins
 						for _, player in pairs(Players:GetPlayers()) do
-							if player.Team == Teams.bossTeam then
+							if player.Team.Name == TeamTypes.BOSS then
 								OutcomeRemoteEvent:FireClient(player, "Victory")
 							else
 								OutcomeRemoteEvent:FireClient(player, "Defeat")
@@ -364,20 +325,17 @@ function Game.init()
 	end)
 
 	Players.PlayerRemoving:Connect(function(player)
-		playersWaiting[player.UserId] = nil
-		playersInArena[player.UserId] = nil
-
 		-- Only check team elimination if game is currently playing
 		if state == states.PLAYING then
 			-- Check if entire team is eliminated
 			local bossTeamAlive = false
 			local survivorTeamAlive = false
 			
-			for _, arenaPlayer in pairs(playersInArena) do
-				if arenaPlayer and arenaPlayer.Character and arenaPlayer.Character:FindFirstChild("Humanoid") then
-					if arenaPlayer.Team == Teams.bossTeam then
+			for _, arenaPlayer in pairs(Players:GetPlayers()) do
+				if player and player.Character and player.Character:FindFirstChild("Humanoid") then
+					if player.Team.Name == TeamTypes.BOSS then
 						bossTeamAlive = true
-					elseif arenaPlayer.Team == Teams.survivorTeam then
+					elseif player.Team.Name == TeamTypes.SURVIVOR then
 						survivorTeamAlive = true
 					end
 				end
@@ -387,7 +345,7 @@ function Game.init()
 			if not bossTeamAlive then
 				-- Boss team eliminated - survivors win
 				for _, player in pairs(Players:GetPlayers()) do
-					if player.Team == Teams.survivorTeam then
+					if player.Team.Name == TeamTypes.SURVIVOR then
 						OutcomeRemoteEvent:FireClient(player, "Victory")
 					else
 						OutcomeRemoteEvent:FireClient(player, "Defeat")
@@ -398,7 +356,7 @@ function Game.init()
 			elseif not survivorTeamAlive then
 				-- Survivors eliminated - boss wins
 				for _, player in pairs(Players:GetPlayers()) do
-					if player.Team == Teams.bossTeam then
+					if player.Team.Name == TeamTypes.BOSS then
 						OutcomeRemoteEvent:FireClient(player, "Victory")
 					else
 						OutcomeRemoteEvent:FireClient(player, "Defeat")

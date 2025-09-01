@@ -47,9 +47,9 @@ end
 
 -- Get server-side weapon module based on weapon type
 local function getWeaponModule(weaponType)
-    if weaponType == "bossattack" then
+    if weaponType == "BossAttack" then
         return BossAttackModule
-    elseif weaponType == "shotgun" then
+    elseif weaponType == "Shotgun" then
         return ShotgunModule
     elseif weaponType == "AssaultRifle" then
         return AssaultRifleModule
@@ -66,6 +66,7 @@ local DummySystem = require(script.DummySystem)
 local weapons = {}
 
 -- Store player weapons
+local previousPlayerWeapons = {}
 local playerWeapons = {}
 
 -- Lag compensation system
@@ -333,6 +334,20 @@ local function rewindWorldState(targetTime)
 end
 
 -- Public function to equip a weapon for a player (handles both server logic and client notification)
+function weapons.equipPreviousWeapon(player)
+    local previousWeapon = previousPlayerWeapons[player.UserId] or "AssaultRifle"
+    if previousWeapon then
+        weapons.equipPlayerWeapon(player, previousWeapon)
+    end
+end
+
+function weapons.equipCurrentWeapon(player)
+    local currentWeapon = playerWeapons[player.UserId] or "AssaultRifle"
+    if currentWeapon then
+        weapons.equipPlayerWeapon(player, currentWeapon)
+    end
+end
+
 function weapons.equipPlayerWeapon(player, weaponType)
     -- Validate weapon type
     if not WeaponConstants[weaponType] then
@@ -342,6 +357,7 @@ function weapons.equipPlayerWeapon(player, weaponType)
     local previousWeapon = playerWeapons[player.UserId]
 
     if previousWeapon then
+        previousPlayerWeapons[player.UserId] = previousWeapon
         local previousServerModule = getWeaponModule(previousWeapon)
         if previousServerModule and previousServerModule.unequip then
             previousServerModule.unequip(player)
@@ -353,7 +369,9 @@ function weapons.equipPlayerWeapon(player, weaponType)
 
     -- Equip new weapon's server-side logic
     local newServerModule = getWeaponModule(weaponType)
+    print("newServerModule", newServerModule)
     if newServerModule and newServerModule.equip then
+        print("equipping weapon", weaponType)
         newServerModule.equip(player)
     end
 
@@ -371,12 +389,6 @@ function weapons.init()
     RunService.Heartbeat:Connect(function()
         for _, player in ipairs(Players:GetPlayers()) do
             recordPlayerPosition(player)
-        end
-
-        -- Record dummy positions
-        local allDummies = DummySystem.getAllDummies()
-        for _, dummy in ipairs(allDummies) do
-            recordDummyPosition(dummy)
         end
     end)
 
@@ -407,27 +419,14 @@ function weapons.init()
 
     -- Handle players leaving - clean up position history
     Players.PlayerRemoving:Connect(function(player)
-        -- Clean up position history
         playerPositionHistory[player.UserId] = nil
-
-        -- Clean up lag parts
         cleanupLagPart(player.UserId)
-
-        -- Unequip weapon's server-side logic before cleanup
-        local currentWeapon = playerWeapons[player.UserId]
-        if currentWeapon then
-            local serverModule = getWeaponModule(currentWeapon)
-            if serverModule and serverModule.unequip then
-                serverModule.unequip(player)
-            end
-        end
-
-        -- Clean up other player data
         playerWeapons[player.UserId] = nil
     end)
 
     -- Handle weapon selection
     WeaponSelectionEvent.OnServerEvent:Connect(function(player, weaponType)
+        print("WeaponSelectionEvent", weaponType)
         -- Get previous weapon for unequipping
         local previousWeapon = playerWeapons[player.UserId]
 
@@ -440,12 +439,15 @@ function weapons.init()
         end
 
         -- Store the selected weapon for this player
+        previousPlayerWeapons[player.UserId] = playerWeapons[player.UserId]
         playerWeapons[player.UserId] = weaponType
 
         -- Equip new weapon's server-side logic
+        print("Equipping weapon", weaponType)
         local newServerModule = getWeaponModule(weaponType)
 
         if newServerModule and newServerModule.equip then
+            print("Equipping weapon", weaponType)
             newServerModule.equip(player)
         end
     end)

@@ -4,7 +4,7 @@ local MapConstants = {
         ID = "Map1",
         DISPLAY_NAME = "Desert Arena",
         DESCRIPTION = "A vast desert battlefield with scattered cover and open sightlines.",
-        FILE_NAME = "Map1",
+        FILE_NAME = "Map2",
         IMAGE_ID = "", -- Default placeholder, can be updated later
         VOTES = 0
     },

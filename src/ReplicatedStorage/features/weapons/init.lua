@@ -5,7 +5,7 @@ local AssaultRifleConstants = require(script.assaultrifle.constants)
 -- Centralized weapon constants table
 local WeaponConstants = {
     shotgun = ShotgunConstants,
-    bossattack = BossAttackConstants,
+    BossAttack = BossAttackConstants,
     AssaultRifle = AssaultRifleConstants,
 }
 

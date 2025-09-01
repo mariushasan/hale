@@ -50,6 +50,8 @@ function BossAttackWeapon.equip(player)
 	local humanoid = player.Character.Humanoid
 	humanoid.MaxHealth = 1000
 	humanoid.Health = 1000
+
+	print("Equipping boss attack")
 	
 	toggleCharacterSize(player.Character, true)
 	setupBossControls(player)

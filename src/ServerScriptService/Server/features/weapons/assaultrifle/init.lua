@@ -12,15 +12,20 @@ local gunStates = {} -- [userId] = {clips = number, ammo = number, reloading = b
 -- Equip method - replaces player's character with SMG character temporarily
 function AssaultRifle.equip(player)
     -- Ensure the player has a character to begin with
+    print("1")
     if not player.Character then
         return
     end
+
+    print("2")
 
     -- Get the SMG model from ReplicatedStorage (or ServerStorage if preferred)
     local smgModel = ReplicatedStorage:FindFirstChild("models"):FindFirstChild("weapons"):FindFirstChild("AssaultRifle")
     if not smgModel then
         return
     end
+
+    print("3")
 
     local originalCharacter = player.Character
     local originalHumanoid = originalCharacter:FindFirstChildOfClass("Humanoid")
@@ -29,9 +34,13 @@ function AssaultRifle.equip(player)
     if not originalHumanoid then
         return
     end
+
+    print("4")
     
     -- Clone the SMG character model
     local newCharacterModel = smgModel:Clone()
+
+    print("5")
 
     -- Preserve original character's clothing
     local clothingItems = {"Shirt", "Pants", "ShirtGraphic"}
@@ -49,6 +58,8 @@ function AssaultRifle.equip(player)
         end
     end
 
+    print("6")
+
     -- Also preserve any Accessory items (hats, etc.)
     for _, child in ipairs(originalCharacter:GetChildren()) do
         if child:IsA("Accessory") then
@@ -64,6 +75,8 @@ function AssaultRifle.equip(player)
         return
     end
 
+    print("7")
+
     -- Get the HumanoidRootPart from both characters for positioning
     local originalRootPart = originalCharacter:FindFirstChild("HumanoidRootPart")
     local smgRootPart = newCharacterModel:FindFirstChild("HumanoidRootPart")
@@ -77,6 +90,8 @@ function AssaultRifle.equip(player)
         return
     end
 
+    print("8")
+
     smgRootPart.CFrame = originalRootPart.CFrame
     smgRootPart.Anchored = false
     smgHumanoid.MaxHealth = originalHumanoid.MaxHealth
@@ -86,6 +101,8 @@ function AssaultRifle.equip(player)
     smgHumanoid.DisplayName = originalHumanoid.DisplayName
     smgHumanoid.RigType = originalHumanoid.RigType
 
+    print("9")
+
     local originalAnimateScript = originalCharacter:FindFirstChild("Animate")
     if originalAnimateScript and originalAnimateScript:IsA("LocalScript") then
         local newAnimateScript = originalAnimateScript:Clone()
@@ -93,10 +110,16 @@ function AssaultRifle.equip(player)
         newAnimateScript.Enabled = true -- Ensure it's enabled and running
     end
 
+    print("10")
+
     newCharacterModel.Name = player.Name
     player.Character = newCharacterModel
     newCharacterModel.Parent = Workspace
     originalCharacter:Destroy()
+
+    wait(0.5)
+
+    print("11")
 
     if smgHumanoid then
         if currentAnimationTracks[player.UserId] then
@@ -105,6 +128,8 @@ function AssaultRifle.equip(player)
             currentAnimationTracks[player.UserId] = nil
         end
 
+        print("12")
+
         local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
 
         local animator = humanoid:FindFirstChildOfClass("Animator")
@@ -112,8 +137,6 @@ function AssaultRifle.equip(player)
             animator = Instance.new("Animator")
             animator.Parent = humanoid
         end
-        
-        wait(0.1)
         
         local animation = Instance.new("Animation")
         animation.AnimationId = "rbxassetid://124292358269579" -- Replace with your actual custom animation ID
@@ -126,6 +149,8 @@ function AssaultRifle.equip(player)
             currentAnimationTracks[player.UserId] = animationTrack
         end
     end
+
+    print("13")
 end
 
 -- Create spread pattern for assault rifle (single bullet, no spread)

@@ -76,15 +76,44 @@ function AssaultRifle.createSpreadPattern(startPosition, direction)
 end
 
 function AssaultRifle.animateBullet(startPosition, hitPosition, hitPart, direction)    
-    local endPosition = startPosition + (direction.Unit * AssaultRifleConstants.RANGE)
+    -- Calculate velocity-based offset
+    local velocityOffset = Vector3.new(0, 0, 0)
+    
+    -- Get the shooter's character to calculate velocity
+    local Players = game:GetService("Players")
+    local shooter = Players.LocalPlayer
+    if shooter and shooter.Character and shooter.Character.PrimaryPart then
+        local velocity = shooter.Character.PrimaryPart.Velocity
+        local velocityMagnitude = velocity.Magnitude
+        
+        -- Only apply offset if player is moving
+        if velocityMagnitude > 1 then
+            -- Calculate offset based on velocity and direction
+            -- You can tweak these values later
+            local velocityMultiplier = 0.1 -- Adjust this to control offset strength
+            local directionMultiplier = 0.02 -- Adjust this to control direction influence
+            
+            -- Offset in the direction of movement
+            local movementDirection = velocity.Unit
+            local directionDot = movementDirection:Dot(direction)
+            
+            -- Apply offset based on velocity magnitude and alignment with shooting direction
+            velocityOffset = (movementDirection * velocityMagnitude * directionMultiplier)
+        end
+    end
+    
+    -- Apply the velocity offset to the start position
+    local adjustedStartPosition = startPosition + velocityOffset
+    
+    local endPosition = adjustedStartPosition + (direction.Unit * AssaultRifleConstants.RANGE)
 
     if hitPosition then
         endPosition = hitPosition
     end
 
-    local maxDistance = (endPosition - startPosition).Magnitude
+    local maxDistance = (endPosition - adjustedStartPosition).Magnitude
     
-    local beam = createBeam(startPosition, endPosition)
+    local beam = createBeam(adjustedStartPosition, endPosition)
 
     Debris:AddItem(beam, 0.05)
 

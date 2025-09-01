@@ -8,6 +8,7 @@ local shootEvent = events:WaitForChild("ShootEvent")
 local weaponSelectionEvent = events:WaitForChild("WeaponSelectionEvent")
 local RandomSeedEvent = events:WaitForChild("RandomSeedEvent")
 local WeaponConstants = require(ReplicatedStorage:WaitForChild("features"):WaitForChild("weapons"))
+local TeamTypes = require(ReplicatedStorage.features.teams)
 
 local Shotgun = require(script.shotgun)
 local BossAttack = require(script.bossattack)
@@ -26,11 +27,13 @@ local function getAndIncrementSeed()
     return seed
 end
 
+local firstSpawn = true
+
 local Weapons = {}
 
 local availableWeapons = {
-	shotgun = Shotgun,
-	bossattack = BossAttack,
+	Shotgun = Shotgun,
+	BossAttack = BossAttack,
 	AssaultRifle = AssaultRifle
 }
 
@@ -52,7 +55,7 @@ local function createDynamicCrosshair()
 	-- Create ScreenGui for crosshair
 	local crosshairGui = Instance.new("ScreenGui")
 	crosshairGui.Name = "CrosshairGui"
-	crosshairGui.ResetOnSpawn = true
+	crosshairGui.ResetOnSpawn = false
 	crosshairGui.IgnoreGuiInset = true
 	crosshairGui.Parent = playerGui
 	
@@ -169,17 +172,24 @@ end
 -- Start the central heartbeat for bullet animations
 RunService.Heartbeat:Connect(updateBullets)
 
--- Handle weapon selection events from server or local UI
-weaponSelectionEvent.OnClientEvent:Connect(function(weaponType)
-	Weapons.equip(weaponType)
-end)
-
 function Weapons.handleFireFromClient()
 	if not currentWeapon then
 		return
 	end
 
 	local weaponConstants = WeaponConstants[currentWeapon]
+
+	if not gunStates[currentWeapon] then
+		gunStates[currentWeapon] = {
+			clips = weaponConstants.STARTING_CLIPS,
+			ammo = weaponConstants.CLIP_SIZE,
+			reloading = false,
+			lastFireTime = 0,
+		}
+	end
+
+	print("gunStates", gunStates[currentWeapon])
+	print("weaponConstants", weaponConstants)
 
 	local currentTime = tick()
     if not ((currentTime - gunStates[currentWeapon].lastFireTime) >= weaponConstants.FIRE_COOLDOWN) then
@@ -301,48 +311,38 @@ function Weapons.handleFireFromServer(weaponType, shooter, bullets)
 end
 
 function Weapons.init()
-	print("0")
 	BulletsGui.init()
-
-	-- Equip default weapon
-	local currentWeaponType = currentWeapon or "AssaultRifle"
-	print("Equipping weapon", currentWeaponType)
-	Weapons.equip(currentWeaponType, true)
 	
 	-- Handle character respawning - cleanup crosshair
 	local player = Players.LocalPlayer
-	player.CharacterRemoving:Connect(function()
-		if crosshair then
-			crosshair:Destroy()
-			crosshair = nil
-		end
+
+	-- Handle weapon selection events from server or local UI
+	weaponSelectionEvent.OnClientEvent:Connect(function(weaponType)
+		print("weaponSelectionEvent", weaponType)
+		Weapons.equip(weaponType, false)
 	end)
 
 	player.CharacterAdded:Connect(function(character)
-		if crosshair then
-			crosshair:Destroy()
-		end
-		crosshair = createDynamicCrosshair()
-
-
-		for _, child in ipairs(character:GetChildren()) do
-			if child:IsA("BasePart") then
-				child.LocalTransparencyModifier = 1
-				child.Transparency = 1
-				transparencyConnections[part.Name] = part:GetPropertyChangedSignal("LocalTransparencyModifier"):Connect(function()
-					part.LocalTransparencyModifier = 1
-					part.Transparency = 1
-				end)
-			end
-		end
-
 		local humanoid = character:WaitForChild("Humanoid")
 		humanoid.Died:Connect(function()
 			if crosshair then
 				crosshair:Destroy()
 			end
+
+			local camera = workspace.CurrentCamera
+			
+			if not camera then
+				return
+			end
+
+			local visualRig = camera:FindFirstChild("VisualRig", true)
+
+			if visualRig then
+				visualRig:Destroy()
+			end
 		end)
 	end)
+
 	-- Handle shooting input with continuous firing support
 	local isMouseDown = false
 	local isTouchDown = false
@@ -350,13 +350,15 @@ function Weapons.init()
 	if UserInputService.TouchEnabled and not UserInputService.MouseEnabled then
 		-- Touch input handling
 		UserInputService.TouchTap:Connect(function(touchPositions, processedByUI)
-			if not processedByUI then
+			print(player.Team.Name)
+			if not processedByUI and player.Team.Name ~= TeamTypes.WAITING then
 				Weapons.handleFireFromClient()
 			end
 		end)
 		
 		UserInputService.TouchStarted:Connect(function(touch, processedByUI)
-			if not processedByUI then
+			print(player.Team.Name)
+			if not processedByUI and player.Team.Name ~= TeamTypes.WAITING then
 				isTouchDown = true
 				-- Start continuous firing
 				task.spawn(function()
@@ -374,7 +376,8 @@ function Weapons.init()
 	else
 		-- Mouse input handling
 		UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
-			if not gameProcessedEvent and input.UserInputType == Enum.UserInputType.MouseButton1 then
+			print(player.Team.Name)
+			if not gameProcessedEvent and input.UserInputType == Enum.UserInputType.MouseButton1 and player.Team.Name ~= TeamTypes.WAITING then
 				isMouseDown = true
 				-- Start continuous firing
 				task.spawn(function()
@@ -387,6 +390,7 @@ function Weapons.init()
 		end)
 		
 		UserInputService.InputEnded:Connect(function(input, gameProcessedEvent)
+			print(player.Team.Name)
 			if input.UserInputType == Enum.UserInputType.MouseButton1 then
 				isMouseDown = false
 			end
@@ -406,14 +410,29 @@ function Weapons.init()
 end
 
 function Weapons.equip(weaponType, notifyServer)
-	print("1")
+	local player = Players.LocalPlayer
+
 	currentWeapon = weaponType
 	
-	if not Players.LocalPlayer.Character then
+	if not player.Character then
+		print("no character")
         return
     end
 
+	if notifyServer then
+		weaponSelectionEvent:FireServer(weaponType)
+	end
+
+	if player.Team.Name == TeamTypes.WAITING then
+		print("not in game")
+		return
+	end
+
 	print("2")
+
+	print("currentWeapon", currentWeapon)
+
+	print("weaponType", weaponType)
 
 	local weaponConstants = WeaponConstants[weaponType]
 
@@ -579,10 +598,6 @@ function Weapons.equip(weaponType, notifyServer)
 	
 	if not crosshair then
 		crosshair = createDynamicCrosshair()
-	end
-	
-	if notifyServer then
-		weaponSelectionEvent:FireServer(weaponType)
 	end
 end
 
