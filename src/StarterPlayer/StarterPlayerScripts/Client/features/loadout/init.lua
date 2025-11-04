@@ -603,7 +603,7 @@ function Loadout.init()
     if not UserInputService.TouchEnabled or UserInputService.MouseEnabled then
         UserInputService.InputBegan:Connect(function(input, gameProcessed)
             local player = Players.LocalPlayer
-            if not gameProcessed and input.KeyCode == Enum.KeyCode.L and player.Team.Name ~= TeamTypes.BOSS then
+            if not gameProcessed and input.KeyCode == Enum.KeyCode.L then
                 Loadout.toggle()
             end
         end)

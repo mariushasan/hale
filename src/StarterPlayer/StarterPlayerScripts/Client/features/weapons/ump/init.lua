@@ -3,11 +3,11 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Debris = game:GetService("Debris")
 
-local AssaultRifleConstants = require(ReplicatedStorage.features.weapons.assaultrifle.constants)
+local UMPConstants = require(ReplicatedStorage.features.weapons.ump.constants)
 local HitGui = require(script.Parent.ui.HitGui)
 local Workspace = game:GetService("Workspace")
 
-local AssaultRifle = {}
+local UMP = {}
 
 local function createBeam(startPosition, endPosition)
     local direction = (endPosition - startPosition).Unit
@@ -58,7 +58,7 @@ local function createBeam(startPosition, endPosition)
     return beam
 end
 
-function AssaultRifle.createSpreadPattern(startPosition, direction)
+function UMP.createSpreadPattern(startPosition, direction)
     local bullets = {}
     
     local bullet = {
@@ -75,7 +75,7 @@ function AssaultRifle.createSpreadPattern(startPosition, direction)
     return bullets
 end
 
-function AssaultRifle.animateBullet(startPosition, hitPosition, hitPart, direction)    
+function UMP.animateBullet(startPosition, hitPosition, hitPart, direction)    
     -- Calculate velocity-based offset
     local velocityOffset = Vector3.new(0, 0, 0)
     
@@ -105,7 +105,7 @@ function AssaultRifle.animateBullet(startPosition, hitPosition, hitPart, directi
     -- Apply the velocity offset to the start position
     local adjustedStartPosition = startPosition + velocityOffset
     
-    local endPosition = adjustedStartPosition + (direction.Unit * AssaultRifleConstants.RANGE)
+    local endPosition = adjustedStartPosition + (direction.Unit * UMPConstants.RANGE)
 
     if hitPosition then
         endPosition = hitPosition
@@ -120,4 +120,5 @@ function AssaultRifle.animateBullet(startPosition, hitPosition, hitPart, directi
     return nil
 end
 
-return AssaultRifle 
+return UMP
+

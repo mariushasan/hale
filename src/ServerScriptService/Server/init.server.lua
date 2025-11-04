@@ -47,5 +47,3 @@ end)
 
 Game.init()
 Weapons.init()
-
--- Reference part no longer needed with new hit-verification approach

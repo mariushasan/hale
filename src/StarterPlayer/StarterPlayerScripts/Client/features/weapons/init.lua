@@ -13,6 +13,8 @@ local TeamTypes = require(ReplicatedStorage.features.teams)
 local Shotgun = require(script.shotgun)
 local BossAttack = require(script.bossattack)
 local AssaultRifle = require(script.assaultrifle)
+local UMP = require(script.ump)
+local Revolver = require(script.revolver)
 local HitGui = require(script.ui.HitGui)
 local BulletsGui = require(script.ui.BulletsGui)
 
@@ -34,7 +36,9 @@ local Weapons = {}
 local availableWeapons = {
 	Shotgun = Shotgun,
 	BossAttack = BossAttack,
-	AssaultRifle = AssaultRifle
+	AssaultRifle = AssaultRifle,
+	UMP = UMP,
+	Revolver = Revolver
 }
 
 local currentWeapon = nil
@@ -219,6 +223,8 @@ function Weapons.handleFireFromClient()
         return
     end
 
+	print("firing weapon", currentWeapon)
+
 	local weapon = availableWeapons[currentWeapon]
 
 	gunStates[currentWeapon].lastFireTime = currentTime
@@ -268,10 +274,13 @@ function Weapons.handleFireFromClient()
 			end
 		end
 
-		local updateFunction = weapon.animateBullet(bulletStartPosition + bullet.animationStartOffset, hitPosition, hitPart, bullet.animationDirection)
+		print("bulletStartPosition", bulletStartPosition)
 
-		if updateFunction then
-			table.insert(bulletAnimations, updateFunction)
+		if bulletStartPosition then
+			local updateFunction = weapon.animateBullet(bulletStartPosition + bullet.animationStartOffset, hitPosition, hitPart, bullet.animationDirection)
+			if updateFunction then
+				table.insert(bulletAnimations, updateFunction)
+			end
 		end
 	end
 
@@ -318,7 +327,6 @@ function Weapons.init()
 
 	-- Handle weapon selection events from server or local UI
 	weaponSelectionEvent.OnClientEvent:Connect(function(weaponType)
-		print("weaponSelectionEvent", weaponType)
 		Weapons.equip(weaponType, false)
 	end)
 
@@ -435,6 +443,8 @@ function Weapons.equip(weaponType, notifyServer)
 	print("weaponType", weaponType)
 
 	local weaponConstants = WeaponConstants[weaponType]
+
+	print("weaponConstants", weaponConstants)
 
 	if not gunStates[currentWeapon] then
 		gunStates[currentWeapon] = {
@@ -566,7 +576,7 @@ function Weapons.equip(weaponType, notifyServer)
         end
 
         local animation = Instance.new("Animation")
-        animation.AnimationId = weaponConstants.RELOAD_ANIM_ID
+        animation.AnimationId = weaponConstants.PARTIAL_RELOAD_ANIM_ID
 
 		if currentReloadAnimationTrack then
 			currentReloadAnimationTrack:Stop()
@@ -581,8 +591,6 @@ function Weapons.equip(weaponType, notifyServer)
             currentReloadAnimationTrack:AdjustSpeed(currentReloadAnimationTrack.Length / weaponConstants.RELOAD_TIME)
         end
     end
-
-	print("9")
 
 	BulletsGui.updateBulletsGui(gunStates[weaponType].ammo, weaponConstants.CLIP_SIZE, gunStates[weaponType].clips, weaponConstants.MAX_CLIPS)
 

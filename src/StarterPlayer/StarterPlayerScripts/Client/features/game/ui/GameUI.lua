@@ -52,7 +52,7 @@ end
 
 local currentTimerTask = nil
 
-function GameUI.showGameEnd(outcome)
+function GameUI.showGameEnd(outcome, timeSeconds)
     if currentTimerTask then
         task.cancel(currentTimerTask)
     end
@@ -69,14 +69,12 @@ function GameUI.showGameEnd(outcome)
     end
     middleLabel.Visible = true
 
-    task.delay(5, function()
+    task.delay(timeSeconds, function()
         middleLabel.Visible = false
     end)
 end
 
 function GameUI.setTimer(seconds)
-    middleLabel.Visible = false
-
     if currentTimerTask then
         task.cancel(currentTimerTask)
     end

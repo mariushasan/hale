@@ -52,9 +52,33 @@ function BulletsGui.createBulletsGui()
 end
 
 function BulletsGui.updateBulletsGui(currentBullets, totalBullets, currentClips, totalClips)
+    if currentClips == math.huge then
+        currentClips = "∞"
+    end
+    if totalClips == math.huge then
+        totalClips = "∞"
+    end
+    if currentBullets == math.huge then
+        currentBullets = "∞"
+    end
+    if totalBullets == math.huge then
+        totalBullets = "∞"
+    end
     if bulletsLabel and clipsLabel then
         bulletsLabel.Text = currentBullets .. "/" .. totalBullets
         clipsLabel.Text = currentClips .. "/" .. totalClips
+    end
+end
+
+function BulletsGui.hide()
+    if bulletsGui then
+        bulletsGui.Enabled = false
+    end
+end
+
+function BulletsGui.show()
+    if bulletsGui then
+        bulletsGui.Enabled = true
     end
 end
 

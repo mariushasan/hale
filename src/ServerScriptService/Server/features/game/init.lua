@@ -5,6 +5,7 @@ local Teams = require(game.ServerScriptService.Server.features.game.Teams)
 local Weapons = require(game.ServerScriptService.Server.features.weapons)
 local MapVoting = require(game.ServerScriptService.Server.features.mapvoting)
 local Spectator = require(game.ServerScriptService.Server.features.spectator)
+local Inventory = require(game.ServerScriptService.Server.features.inventory)
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local events = ReplicatedStorage:WaitForChild("events")
@@ -48,24 +49,18 @@ local Game = {}
 local function teleportPlayerToSpawn(player)
 	local character = player.Character
 	if not character then 
-		print("No character found for player:", player.Name)
 		return 
 	end
 	
 	local humanoid = character:FindFirstChild("Humanoid")
 	if not humanoid then
-		print("No humanoid found for player:", player.Name)
 		return
 	end
-	
-	print("Player", player.Name, "has character and humanoid, health:", humanoid.Health)
-	
+		
 	local gameStart = workspace:FindFirstChild("GameStart", true)
 	if gameStart then
 		local spawnCFrame = gameStart.CFrame + Vector3.new(0, 5, 0)
-		print("Teleporting player to spawn location", spawnCFrame)
 		character:PivotTo(spawnCFrame)
-		print("Player", player.Name, "teleported to spawn, health after teleport:", humanoid.Health)
 	end
 end
 
@@ -102,7 +97,6 @@ local function startPlayerMonitoring()
 					local winningMap = MapVoting.startVoting(VOTING_TIME)
 					
 					-- Load the winning map before starting the game
-					print("winningMap", winningMap)
 					if winningMap then
 						local mapLoaded = MapVoting.loadMap(winningMap)
 						if mapLoaded then
@@ -128,18 +122,13 @@ function startGame()
 	-- Count players in waiting table
 	local waitingPlayerCount = 0
 
-	print("All players:", allPlayers)
-
 	for _, player in pairs(allPlayers) do
 		if player.Team.Name == TeamTypes.WAITING then
 			waitingPlayerCount = waitingPlayerCount + 1
 		end
 	end
 
-	print("Waiting player count:", waitingPlayerCount)
-
 	if waitingPlayerCount < PLAYER_THRESHOLD then
-		print("Not enough players or boss player, ending game")
 		endGame()
 		return
 	end
@@ -150,21 +139,13 @@ function startGame()
 	local bossPlayer = Teams.getBossPlayer()
 
 	if not bossPlayer then
-		print("No boss player, ending game")
 		endGame()
 		return
 	end
 
-	print("Boss player:", bossPlayer.Name)
-
-
 	state = states.PLAYING
 
-	-- Teleport all waiting players to spawn location
-	print("Teleporting all players to spawn")
-	print(allPlayers)
 	for _, player in pairs(allPlayers) do
-		print("Teleporting player to spawn:", player.Name)
 		local character = player.Character
 
 		if character then
@@ -178,10 +159,8 @@ function startGame()
 		teleportPlayerToSpawn(player)
 		Spectator.updateSpectatorStatus(player, false)
 		if player == bossPlayer then
-			print("Equipping boss weapon")
 			Weapons.equipPlayerWeapon(player, "BossAttack")
 		else
-			print("Equipping current weapon")
 			Weapons.equipCurrentWeapon(player)
 		end
 	end
@@ -192,7 +171,25 @@ function startGame()
 
 	gameTimerTask = task.delay(GAME_TIME, function()
 		gameTimerTask = nil
-		OutcomeRemoteEvent:FireAllClients("Draw")
+		OutcomeRemoteEvent:FireAllClients("Draw", 5)
+		
+		-- Award coins for draw (same as loss)
+		local allPlayers = Players:GetPlayers()
+		local bossPlayer = Teams.getBossPlayer()
+		
+		for _, player in pairs(allPlayers) do
+			if player.Team.Name == TeamTypes.SURVIVOR then
+				-- Survivors get loss reward (50 coins)
+				Inventory.addCoins(player, 50)
+				Inventory.savePlayerData(player)
+			elseif player == bossPlayer then
+				-- Boss gets loss reward (75 coins)
+				Inventory.addCoins(player, 75)
+				Inventory.savePlayerData(player)
+			end
+		end
+
+		task.wait(5)
 		endGame()
 	end)
 end
@@ -246,8 +243,6 @@ function Game.init()
 		-- Update spectator status for the new player
 
 		player.CharacterAdded:Connect(function(character)
-			print("Character added for player:", player.Name)
-
 			local HumanoidRootPart = character:WaitForChild("HumanoidRootPart", 5)
 
 			if HumanoidRootPart and player.Team.Name == TeamTypes.WAITING then
@@ -257,12 +252,8 @@ function Game.init()
 			-- Wait for humanoid to be available
 			local humanoid = character:WaitForChild("Humanoid", 5)
 			if not humanoid then
-				print("Failed to get humanoid for player:", player.Name)
 				return
-			end
-			
-			print("Humanoid found for player:", player.Name, "Health:", humanoid.Health, "MaxHealth:", humanoid.MaxHealth)
-			
+			end			
 			-- Teleport new character to waiting room immediately
 			task.wait(0.5) -- Small delay to ensure character is fully loaded
 			
@@ -271,9 +262,8 @@ function Game.init()
 			-- Update spectator status when player spawn
 			
 			humanoid.Died:Connect(function()
-				print("Player", player.Name, "died! Health:", humanoid.Health, "MaxHealth:", humanoid.MaxHealth)
-				print("Character position:", character:GetPivot().Position)
-				print("Game state:", state)
+				-- Store team before reassigning (needed for coin rewards)
+				local wasSurvivor = player.Team.Name == TeamTypes.SURVIVOR
 				
 				Teams.assignWaitingTeam(player)
 				
@@ -281,6 +271,14 @@ function Game.init()
 				
 				-- Only check team elimination if game is currently playing
 				if state == states.PLAYING then
+					-- Give boss instant kill reward if survivor dies
+					if wasSurvivor then
+						local bossPlayer = Teams.getBossPlayer()
+						if bossPlayer then
+							Inventory.addCoins(bossPlayer, 15)
+							Inventory.savePlayerData(bossPlayer)
+						end
+					end
 					-- Check if entire team is eliminated
 					local bossTeamAlive = false
 					local survivorTeamAlive = false
@@ -298,27 +296,41 @@ function Game.init()
 					-- End game if either team is completely eliminated
 					if not bossTeamAlive then
 						-- Boss team eliminated - survivors win
-						for _, player in pairs(Players:GetPlayers()) do
+						local allPlayers = Players:GetPlayers()
+						
+						for _, player in pairs(allPlayers) do
 							if player.Team.Name == TeamTypes.SURVIVOR then
-								OutcomeRemoteEvent:FireClient(player, "Victory")
-							else
-								OutcomeRemoteEvent:FireClient(player, "Defeat")
+								OutcomeRemoteEvent:FireClient(player, "Victory", 5)
+								-- Survivors win: 150 coins
+								Inventory.addCoins(player, 150)
+								Inventory.savePlayerData(player)
+							elseif player.Team.Name == TeamTypes.BOSS then
+								OutcomeRemoteEvent:FireClient(player, "Defeat", 5)
+								-- Boss loss: 75 coins
+								Inventory.addCoins(player, 75)
+								Inventory.savePlayerData(player)
 							end
 						end
-						TimerRemoteEvent:FireAllClients(0) -- Stop the timer
-						endGame()
 					elseif not survivorTeamAlive then
 						-- Survivors eliminated - boss wins
-						for _, player in pairs(Players:GetPlayers()) do
+						local allPlayers = Players:GetPlayers()
+						
+						for _, player in pairs(allPlayers) do
 							if player.Team.Name == TeamTypes.BOSS then
-								OutcomeRemoteEvent:FireClient(player, "Victory")
-							else
-								OutcomeRemoteEvent:FireClient(player, "Defeat")
+								OutcomeRemoteEvent:FireClient(player, "Victory", 5)
+								-- Boss win: 100 base coins (per-kill bonuses already given)
+								Inventory.addCoins(player, 100)
+								Inventory.savePlayerData(player)
+							elseif player.Team.Name == TeamTypes.SURVIVOR then
+								OutcomeRemoteEvent:FireClient(player, "Defeat", 5)
+								-- Survivors loss: 50 coins
+								Inventory.addCoins(player, 50)
+								Inventory.savePlayerData(player)
 							end
 						end
-						TimerRemoteEvent:FireAllClients(0) -- Stop the timer
-						endGame()
 					end
+					task.wait(5)
+					endGame()
 				end
 			end)
 		end)
@@ -344,27 +356,41 @@ function Game.init()
 			-- End game if either team is completely eliminated
 			if not bossTeamAlive then
 				-- Boss team eliminated - survivors win
-				for _, player in pairs(Players:GetPlayers()) do
+				local allPlayers = Players:GetPlayers()
+				
+				for _, player in pairs(allPlayers) do
 					if player.Team.Name == TeamTypes.SURVIVOR then
-						OutcomeRemoteEvent:FireClient(player, "Victory")
-					else
-						OutcomeRemoteEvent:FireClient(player, "Defeat")
+						OutcomeRemoteEvent:FireClient(player, "Victory", 5, 5)
+						-- Survivors win: 150 coins
+						Inventory.addCoins(player, 150)
+						Inventory.savePlayerData(player)
+					elseif player.Team.Name == TeamTypes.BOSS then
+						OutcomeRemoteEvent:FireClient(player, "Defeat", 5, 5)
+						-- Boss loss: 75 coins
+						Inventory.addCoins(player, 75)
+						Inventory.savePlayerData(player)
 					end
 				end
-				TimerRemoteEvent:FireAllClients(0) -- Stop the timer
-				endGame()
 			elseif not survivorTeamAlive then
 				-- Survivors eliminated - boss wins
-				for _, player in pairs(Players:GetPlayers()) do
+				local allPlayers = Players:GetPlayers()
+				
+				for _, player in pairs(allPlayers) do
 					if player.Team.Name == TeamTypes.BOSS then
-						OutcomeRemoteEvent:FireClient(player, "Victory")
-					else
-						OutcomeRemoteEvent:FireClient(player, "Defeat")
+						OutcomeRemoteEvent:FireClient(player, "Victory", 5)
+						-- Boss win: 100 base coins (per-kill bonuses already given)
+						Inventory.addCoins(player, 100)
+						Inventory.savePlayerData(player)
+					elseif player.Team.Name == TeamTypes.SURVIVOR then
+						OutcomeRemoteEvent:FireClient(player, "Defeat", 5)
+						-- Survivors loss: 50 coins
+						Inventory.addCoins(player, 50)
+						Inventory.savePlayerData(player)
 					end
 				end
-				TimerRemoteEvent:FireAllClients(0) -- Stop the timer
-				endGame()
 			end
+			task.wait(5)
+			endGame()
 		end
 	end)
 end

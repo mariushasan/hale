@@ -20,8 +20,9 @@ camera.CameraType = Enum.CameraType.Scriptable
 Shop.init()
 Game.init()
 Inventory.init()
-LogViewer.init()
 Spectator.init()
 MapVoting.init()
 Weapons.init()
 Loadout.init()
+
+_G.Analytics.sendEvent(player.UserId, "game_started", nil)

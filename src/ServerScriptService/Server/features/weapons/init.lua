@@ -16,6 +16,8 @@ local gunStates = {}
 local BossAttackModule = require(script.bossattack)
 local ShotgunModule = require(script.shotgun)
 local AssaultRifleModule = require(script.assaultrifle)
+local UMPModule = require(script.ump)
+local RevolverModule = require(script.revolver)
 
 -- Collision groups for lag compensation
 local LAG_PARTS_GROUP = "LagParts"
@@ -53,8 +55,141 @@ local function getWeaponModule(weaponType)
         return ShotgunModule
     elseif weaponType == "AssaultRifle" then
         return AssaultRifleModule
+    elseif weaponType == "UMP" then
+        return UMPModule
+    elseif weaponType == "Revolver" then
+        return RevolverModule
     else
         return nil -- No server-side logic needed
+    end
+end
+
+-- Store animation tracks for equipped weapons
+local currentAnimationTracks = {} -- [userId] = animationTrack
+local Workspace = game:GetService("Workspace")
+
+-- Shared equip function for all weapons
+local function equipWeapon(player, weaponType)
+    -- Ensure the player has a character to begin with
+    if not player.Character then
+        return
+    end
+
+    -- Get weapon constants
+    local weaponConstants = WeaponConstants[weaponType]
+    if not weaponConstants then
+        return
+    end
+
+    -- Get the weapon model from ReplicatedStorage
+    local weaponModel = ReplicatedStorage:FindFirstChild("models"):FindFirstChild("weapons"):FindFirstChild(weaponType)
+    if not weaponModel then
+        return
+    end
+
+    local originalCharacter = player.Character
+    local originalHumanoid = originalCharacter:FindFirstChildOfClass("Humanoid")
+    
+    -- Ensure the original character has a Humanoid
+    if not originalHumanoid then
+        return
+    end
+    
+    -- Clone the weapon character model
+    local newCharacterModel = weaponModel:Clone()
+
+    -- Preserve original character's clothing
+    local clothingItems = {"Shirt", "Pants", "ShirtGraphic"}
+    for _, clothingType in ipairs(clothingItems) do
+        local originalClothing = originalCharacter:FindFirstChildOfClass(clothingType)
+        if originalClothing then
+            -- Remove existing clothing of this type from weapon character
+            local existingClothing = newCharacterModel:FindFirstChildOfClass(clothingType)
+            if existingClothing then
+                existingClothing:Destroy()
+            end
+            -- Copy the original clothing
+            local newClothing = originalClothing:Clone()
+            newClothing.Parent = newCharacterModel
+        end
+    end
+
+    -- Also preserve any Accessory items (hats, etc.)
+    for _, child in ipairs(originalCharacter:GetChildren()) do
+        if child:IsA("Accessory") then
+            local newAccessory = child:Clone()
+            newAccessory.Parent = newCharacterModel
+        end
+    end
+    
+    -- Get the Humanoid from the new weapon character
+    local weaponHumanoid = newCharacterModel:FindFirstChildOfClass("Humanoid")
+    if not weaponHumanoid then
+        newCharacterModel:Destroy() -- Clean up the cloned character
+        return
+    end
+
+    -- Get the HumanoidRootPart from both characters for positioning
+    local originalRootPart = originalCharacter:FindFirstChild("HumanoidRootPart")
+    local weaponRootPart = newCharacterModel:FindFirstChild("HumanoidRootPart")
+    
+    if not originalRootPart then
+        newCharacterModel:Destroy()
+        return
+    end
+    if not weaponRootPart then
+        newCharacterModel:Destroy()
+        return
+    end
+
+    weaponRootPart.CFrame = originalRootPart.CFrame
+    weaponRootPart.Anchored = false
+    weaponHumanoid.MaxHealth = originalHumanoid.MaxHealth
+    weaponHumanoid.Health = originalHumanoid.Health
+    weaponHumanoid.WalkSpeed = originalHumanoid.WalkSpeed
+    weaponHumanoid.JumpPower = originalHumanoid.JumpPower
+    weaponHumanoid.DisplayName = originalHumanoid.DisplayName
+    weaponHumanoid.RigType = originalHumanoid.RigType
+
+    local originalAnimateScript = originalCharacter:FindFirstChild("Animate")
+    if originalAnimateScript and originalAnimateScript:IsA("LocalScript") then
+        local newAnimateScript = originalAnimateScript:Clone()
+        newAnimateScript.Parent = newCharacterModel
+        newAnimateScript.Enabled = true -- Ensure it's enabled and running
+    end
+
+    newCharacterModel.Name = player.Name
+    player.Character = newCharacterModel
+    newCharacterModel.Parent = Workspace
+    originalCharacter:Destroy()
+
+    wait(0.5)
+
+    if weaponHumanoid then
+        if currentAnimationTracks[player.UserId] then
+            currentAnimationTracks[player.UserId]:Stop()
+            currentAnimationTracks[player.UserId]:Destroy() -- Clean up the old track
+            currentAnimationTracks[player.UserId] = nil
+        end
+
+        local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+
+        local animator = humanoid:FindFirstChildOfClass("Animator")
+        if not animator then
+            animator = Instance.new("Animator")
+            animator.Parent = humanoid
+        end
+        
+        local animation = Instance.new("Animation")
+        animation.AnimationId = weaponConstants.HOLD_ANIM_ID
+        
+        local animationTrack = animator:LoadAnimation(animation)
+        
+        if animationTrack then
+            animationTrack.Looped = true
+            animationTrack:Play()
+            currentAnimationTracks[player.UserId] = animationTrack
+        end
     end
 end
 
@@ -367,13 +502,8 @@ function weapons.equipPlayerWeapon(player, weaponType)
     -- Store the selected weapon for this player
     playerWeapons[player.UserId] = weaponType
 
-    -- Equip new weapon's server-side logic
-    local newServerModule = getWeaponModule(weaponType)
-    print("newServerModule", newServerModule)
-    if newServerModule and newServerModule.equip then
-        print("equipping weapon", weaponType)
-        newServerModule.equip(player)
-    end
+    -- Equip weapon using shared equip function
+    equipWeapon(player, weaponType)
 
     -- Notify client about the weapon change
     WeaponSelectionEvent:FireClient(player, weaponType)
@@ -442,19 +572,18 @@ function weapons.init()
         previousPlayerWeapons[player.UserId] = playerWeapons[player.UserId]
         playerWeapons[player.UserId] = weaponType
 
-        -- Equip new weapon's server-side logic
-        print("Equipping weapon", weaponType)
-        local newServerModule = getWeaponModule(weaponType)
-
-        if newServerModule and newServerModule.equip then
-            print("Equipping weapon", weaponType)
-            newServerModule.equip(player)
-        end
+        -- Equip weapon using shared equip function
+        equipWeapon(player, weaponType)
     end)
 
     -- Handle shooting with bullet tracking
     ShootEvent.OnServerEvent:Connect(function(shooter, hits, direction, startPosition, seed)
+        print("ShootEvent", shooter, hits, direction, startPosition, seed)
         local weaponType = playerWeapons[shooter.UserId]
+        _G.Analytics.sendEvent(shooter.UserId, "shoot", {
+            weaponType = weaponType,
+            hits = math.random(1, 10),
+        })
         local weaponConstants = WeaponConstants[weaponType]
         local weaponModule = getWeaponModule(weaponType)
 

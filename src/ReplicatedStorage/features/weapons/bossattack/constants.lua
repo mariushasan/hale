@@ -4,8 +4,15 @@ local BossAttackConstants = {
     ID = "bossattack",
     DAMAGE = 75,
     RANGE = 15,
-    COOLDOWN = 2, -- seconds
-    
+    FIRE_COOLDOWN = 2, -- seconds
+    RELOAD_TIME = 0, -- seconds
+    MAX_CLIPS = math.huge,
+    STARTING_CLIPS = math.huge,
+    CLIP_SIZE = math.huge,
+    HOLD_ANIM_ID = "rbxassetid://124292358269579",
+    FIRE_ANIM_ID = "rbxassetid://86022384403109",
+    PARTIAL_RELOAD_ANIM_ID = "rbxassetid://103402824212009",
+    FULL_RELOAD_ANIM_ID = "rbxassetid://103402824212009",
     -- "Bullet" Properties (for simulation)
     BULLET_SPEED = 1000, -- Very fast so it hits almost immediately
     

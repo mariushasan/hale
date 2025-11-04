@@ -1,8 +1,8 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local AssaultRifle = {}
+local Revolver = {}
 
--- Create spread pattern for assault rifle (single bullet, no spread)
-function AssaultRifle.createSpreadPattern(startPosition, direction, seed)
+-- Create spread pattern for Revolver (single bullet, no spread)
+function Revolver.createSpreadPattern(startPosition, direction, seed)
     -- Set random seed for deterministic pattern (if needed for future features)
     if seed then
         math.randomseed(seed)
@@ -10,7 +10,7 @@ function AssaultRifle.createSpreadPattern(startPosition, direction, seed)
     
     local bullets = {}
     
-    -- Single bullet for assault rifle - always shoots straight from the given direction
+    -- Single bullet for Revolver - always shoots straight from the given direction
     local bullet = {
         -- Single raycast per bullet
         raycastData = {{
@@ -26,4 +26,5 @@ function AssaultRifle.createSpreadPattern(startPosition, direction, seed)
     return bullets
 end
 
-return AssaultRifle
+return Revolver
+

@@ -384,4 +384,8 @@ function Inventory.removeItem(player, itemId)
     return false
 end
 
+function Inventory.savePlayerData(player)
+    savePlayerData(player)
+end
+
 return Inventory 

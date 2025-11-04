@@ -40,10 +40,12 @@ local function createMenuSystem()
     
     -- Determine if mobile
     local isMobile = UserInputService.TouchEnabled
+
+    local mainIcon = nil
     
     if isMobile then
         -- Mobile: Create the main menu icon with clickable buttons
-        local mainIcon = Instance.new("TextButton")
+        mainIcon = Instance.new("TextButton")
         mainIcon.Name = "MainMenuIcon"
         mainIcon.Size = UDim2.new(0, 60, 0, 60)
         mainIcon.Position = UDim2.new(1, -50, 0, 20)
@@ -157,37 +159,39 @@ local function createMenuSystem()
          end
      end
      
-     -- Connect main icon click (mobile only)
-     mainIcon.MouseButton1Click:Connect(toggleMenu)
+     if mainIcon then
+        -- Connect main icon click (mobile only)
+        mainIcon.MouseButton1Click:Connect(toggleMenu)
+        
+        -- Add hover effect to main icon (mobile only)
+        mainIcon.MouseEnter:Connect(function()
+            local tween = TweenService:Create(mainIcon, TweenInfo.new(0.2), {
+                Size = UDim2.new(0, 65, 0, 65),
+                BackgroundColor3 = Color3.fromRGB(55, 55, 60)
+            })
+            tween:Play()
+            
+            local strokeTween = TweenService:Create(mainStroke, TweenInfo.new(0.2), {
+                Thickness = 3
+            })
+            strokeTween:Play()
+        end)
+        
+        mainIcon.MouseLeave:Connect(function()
+            local tween = TweenService:Create(mainIcon, TweenInfo.new(0.2), {
+                Size = UDim2.new(0, 60, 0, 60),
+                BackgroundColor3 = Color3.fromRGB(45, 45, 50)
+            })
+            tween:Play()
+            
+            local strokeTween = TweenService:Create(mainStroke, TweenInfo.new(0.2), {
+                Thickness = 2
+            })
+            strokeTween:Play()
+        end)
+    end
      
-     -- Add hover effect to main icon (mobile only)
-     mainIcon.MouseEnter:Connect(function()
-         local tween = TweenService:Create(mainIcon, TweenInfo.new(0.2), {
-             Size = UDim2.new(0, 65, 0, 65),
-             BackgroundColor3 = Color3.fromRGB(55, 55, 60)
-         })
-         tween:Play()
-         
-         local strokeTween = TweenService:Create(mainStroke, TweenInfo.new(0.2), {
-             Thickness = 3
-         })
-         strokeTween:Play()
-     end)
-     
-     mainIcon.MouseLeave:Connect(function()
-         local tween = TweenService:Create(mainIcon, TweenInfo.new(0.2), {
-             Size = UDim2.new(0, 60, 0, 60),
-             BackgroundColor3 = Color3.fromRGB(45, 45, 50)
-         })
-         tween:Play()
-         
-         local strokeTween = TweenService:Create(mainStroke, TweenInfo.new(0.2), {
-             Thickness = 2
-         })
-         strokeTween:Play()
-     end)
-     
-     return menuGui
+    return menuGui
 end
 
 function Game.init()
@@ -195,8 +199,8 @@ function Game.init()
         GameUI.setTimer(timeSeconds)
     end)
 	
-    OutcomeRemoteEvent.OnClientEvent:Connect(function(outcome)
-        GameUI.showGameEnd(outcome)
+    OutcomeRemoteEvent.OnClientEvent:Connect(function(outcome, timeSeconds)
+        GameUI.showGameEnd(outcome, timeSeconds)
     end)
 
     GameUI.init()

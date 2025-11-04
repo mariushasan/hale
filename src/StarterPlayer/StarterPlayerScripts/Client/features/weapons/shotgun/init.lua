@@ -221,202 +221,58 @@ function Shotgun.createSpreadPattern(startPosition, direction)
 end
 
 function Shotgun.animateBullet(startPosition, hitPosition, hitPart, direction)    
-    local endPosition = startPosition + (direction.Unit * ShotgunConstants.RANGE)
-
-    if hitPosition then
-        endPosition = hitPosition
-    end
-
-    local maxDistance = (endPosition - startPosition).Magnitude
+    print("animateBullet", startPosition, hitPosition, hitPart, direction)
     
-    local beam = createBeam(startPosition, endPosition)
-
-    Debris:AddItem(beam, 0.05)
+    -- Calculate spread pattern for shotgun pellets
+    local forwardVector = direction.Unit
+    
+    -- Calculate right and up vectors for spread plane
+    local rightVector = forwardVector:Cross(Vector3.new(0, 1, 0))
+    if rightVector.Magnitude < 0.1 then
+        -- If looking straight up/down, use world right vector
+        rightVector = Vector3.new(1, 0, 0)
+    else
+        rightVector = rightVector.Unit
+    end
+    local upVector = rightVector:Cross(forwardVector).Unit
+    
+    -- Shotgun spread angle (in radians) - wider spread for close range effectiveness
+    local spreadAngle = math.rad(8) -- ~8 degree cone spread
+    
+    -- Create BULLETS_PER_SHOT number of beams with spread pattern
+    local bulletsPerShot = ShotgunConstants.BULLETS_PER_SHOT
+    
+    for i = 1, bulletsPerShot do
+        -- Random angle within spread cone (circular pattern)
+        local azimuthAngle = math.random() * 2 * math.pi -- Random angle around circle (0 to 2π)
+        local elevationAngle = math.sqrt(math.random()) * spreadAngle -- Random elevation within spread (sqrt for uniform distribution)
+        
+        -- Calculate spread offset in the plane perpendicular to direction
+        -- Using small angle approximation: sin(θ) ≈ θ for small angles
+        local spreadX = math.cos(azimuthAngle) * elevationAngle
+        local spreadY = math.sin(azimuthAngle) * elevationAngle
+        
+        -- Apply spread to direction by rotating forward vector
+        -- For small angles, we can approximate rotation by adding perpendicular components
+        local spreadOffset = (rightVector * spreadX) + (upVector * spreadY)
+        local spreadDirection = (forwardVector + spreadOffset).Unit
+        
+        -- Calculate end position with spread
+        local endPosition = startPosition + (spreadDirection * ShotgunConstants.RANGE)
+        
+        -- If original hit position exists, use it as reference for spread distance
+        if hitPosition then
+            local distanceToHit = (hitPosition - startPosition).Magnitude
+            -- Project spread direction to the same distance as the hit
+            endPosition = startPosition + (spreadDirection * distanceToHit)
+        end
+        
+        -- Create beam for this pellet
+        local beam = createBeam(startPosition, endPosition)
+        Debris:AddItem(beam, 0.05)
+    end
 
     return nil
-end
-
-function Shotgun.equip()
-    if not Players.LocalPlayer.Character then
-        return
-    end
-
-    local shotgunModel = ReplicatedStorage:FindFirstChild("models"):FindFirstChild("weapons"):FindFirstChild("Shotgun")
-    if not shotgunModel then
-        return
-    end
-
-    local originalCharacter = Players.LocalPlayer.Character
-    local originalHumanoid = originalCharacter:FindFirstChildOfClass("Humanoid")
-    
-    -- Ensure the original character has a Humanoid
-    if not originalHumanoid then
-        return
-    end
-    
-    -- Clone the SMG character model
-    local newCharacterModel = shotgunModel:Clone()
-    
-    -- Get the Humanoid from the new SMG character
-    local weaponHumanoid = newCharacterModel:FindFirstChildOfClass("Humanoid")
-    
-    if not weaponHumanoid then
-        newCharacterModel:Destroy() -- Clean up the cloned character
-        return
-    end
-
-    -- Preserve original character's clothing
-    local clothingItems = {"Shirt", "Pants", "ShirtGraphic"}
-    for _, clothingType in ipairs(clothingItems) do
-        local originalClothing = originalCharacter:FindFirstChildOfClass(clothingType)
-        if originalClothing then
-            local existingClothing = newCharacterModel:FindFirstChildOfClass(clothingType)
-            if existingClothing then
-                existingClothing:Destroy()
-            end
-            local newClothing = originalClothing:Clone()
-            newClothing.Parent = newCharacterModel
-        end
-    end
-
-    setupFirstPerson(newCharacterModel)
-end
-
-function Shotgun.unequip()
-    for _, connection in pairs(transparencyConnections) do
-        if connection then
-            connection:Disconnect()
-        end
-    end
-    transparencyConnections = {}
-
-    if currentHoldAnimationTrack then
-        currentHoldAnimationTrack:Stop()
-        currentHoldAnimationTrack:Destroy()
-        currentHoldAnimationTrack = nil
-    end
-
-    if currentFireAnimationTrack then
-        currentFireAnimationTrack:Stop()
-        currentFireAnimationTrack:Destroy()
-        currentFireAnimationTrack = nil
-    end
-    
-    -- Cleanup camera sync connection
-    if cameraArmSyncConnection then
-        cameraArmSyncConnection:Disconnect()
-        cameraArmSyncConnection = nil
-    end
-    
-    -- Cleanup visual rig
-    if visualRig then
-        visualRig:Destroy()
-        visualRig = nil
-    end
-end
-
-function Shotgun.handleFireFromClient()
-    local player = Players.LocalPlayer
-    
-    -- Check fire rate
-    local currentTime = tick()
-    local fireRate = ShotgunConstants.FIRE_COOLDOWN
-    if not (currentTime - lastFireTime >= fireRate) then
-        return {}, {}
-    end
-    
-    lastFireTime = currentTime
-    
-    -- Calculate local firing parameters
-    local camera = workspace.CurrentCamera
-    if not camera then
-        return {}, {}
-    end
-    
-    local bullets = Shotgun.createSpreadPattern(camera.CFrame.Position, camera.CFrame.LookVector)
-    
-    -- Assign bullet IDs
-    for _, bullet in ipairs(bullets) do
-        bullet.id = generateBulletId()
-    end
-    
-    local hits = {}
-    local bulletAnimations = {}
-
-    local bulletStart = visualRig:FindFirstChild("BulletStart", true)
-    local bulletStartPosition = bulletStart and bulletStart.WorldPosition
-    
-    for _, bullet in ipairs(bullets) do
-        -- Check if this is a local firing (bullet ID starts with local player's name)
-        if bullet.id and bullet.id:find("^" .. player.Name .. "_") then
-            -- Perform client-side raycasts for this bullet
-            local camera = workspace.CurrentCamera
-            local raycastParams = RaycastParams.new()
-            raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
-            raycastParams.FilterDescendantsInstances = {player.Character}
-            raycastParams.CollisionGroup = "PlayerCharacters"
-
-            local hitPosition = nil
-            
-            -- Try each raycast for this bullet until we get a hit
-            for _, raycastData in ipairs(bullet.raycastData) do                
-                -- Raycast in the direction we're shooting
-                local raycastDistance = ShotgunConstants.RANGE -- Max shooting distance
-                local raycastResult = workspace:Raycast(raycastData.startPosition, raycastData.direction * raycastDistance, raycastParams)
-                
-                if raycastResult then
-                    hitPosition = raycastResult.Position
-                    table.insert(hits, {
-                        hitPart = raycastResult.Instance,
-                        hitPosition = raycastResult.Position,
-                    })
-                    break
-                end
-            end
-            
-            -- Create bullet animation (beam automatically cleans up)
-            local updateFunction = Shotgun.animateBullet(bulletStartPosition + bullet.animationStartOffset, hitPosition, hitPart, bullet.animationDirection)
-            bulletAnimations[bullet.id] = {
-                update = updateFunction,
-            }
-        end
-    end
-    
-    if #hits > 0 then
-        local avgHitPosition, validHits = HitGui.calculateAverageHitPosition(hits)
-        if avgHitPosition and validHits > 0 then
-            local totalDamage = validHits * ShotgunConstants.DAMAGE_PER_HIT
-            HitGui.showDamageNumber(totalDamage, avgHitPosition)
-        end
-    end
-
-    if currentFireAnimationTrack then
-        currentFireAnimationTrack:Play()
-    end
-
-    return hits, bulletAnimations
-end
-
-function Shotgun.handleFireFromServer(shooter, bullets)
-    local bulletAnimations = {}
-
-    local shooterCharacter = shooter.Character
-
-    if not shooterCharacter then
-        return bulletAnimations
-    end
-
-    local bulletStart = shooterCharacter:FindFirstChild("BulletStart", true)
-    local bulletStartPosition = bulletStart and bulletStart.WorldPosition
-    
-    for _, bullet in ipairs(bullets) do
-        local updateFunction = Shotgun.animateBullet(bulletStartPosition + bullet.animationStartOffset, bullet.hitPosition, bullet.hitPart, bullet.animationDirection)
-        bulletAnimations[bullet.id] = {
-            update = updateFunction,
-        }
-    end
-    
-    return bulletAnimations
 end
 
 return Shotgun

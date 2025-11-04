@@ -489,7 +489,11 @@ function Shop.showWeaponGrid()
         currentPage = "grid"
         local mainFrame = shopGui.MainFrame
         local weaponDetails = mainFrame:FindFirstChild("DetailsScroll")
-        local weaponGrid = mainFrame:FindFirstChild("WeaponGrid")
+        local weaponGrid = mainFrame:FindFirstChild("ScrollFrame")
+
+        print(weaponGrid)
+        print(weaponDetails)
+        print(mainFrame)
 
         if weaponDetails then
             weaponDetails:Destroy()
@@ -517,7 +521,7 @@ function Shop.showWeaponDetails(constants)
         local backBtn = mainFrame.Header.BackButton
         backBtn.Visible = true
 
-        local weaponGrid = mainFrame:FindFirstChild("WeaponGrid")
+        local weaponGrid = mainFrame:FindFirstChild("ScrollFrame")
         if weaponGrid then
             weaponGrid.Visible = false
         end
